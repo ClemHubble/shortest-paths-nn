@@ -1,0 +1,1275 @@
+GIN-0:
+  final:
+    hidden: 64
+    input: 128
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 16
+    output: 8
+  phi:
+    hidden: 256
+    input: 8
+    layers: 4
+    output: 128
+GIN-1:
+  final:
+    hidden: 64
+    input: 16
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 32
+    output: 8
+  phi:
+    hidden: 128
+    input: 8
+    layers: 4
+    output: 16
+GIN-10:
+  final:
+    hidden: 64
+    input: 32
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 16
+    output: 8
+  phi:
+    hidden: 16
+    input: 8
+    layers: 4
+    output: 32
+GIN-11:
+  final:
+    hidden: 32
+    input: 64
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 32
+    output: 8
+  phi:
+    hidden: 256
+    input: 8
+    layers: 4
+    output: 64
+GIN-12:
+  final:
+    hidden: 256
+    input: 16
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 64
+    output: 8
+  phi:
+    hidden: 64
+    input: 8
+    layers: 2
+    output: 16
+GIN-13:
+  final:
+    hidden: 64
+    input: 8
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 128
+    output: 8
+  phi:
+    hidden: 64
+    input: 8
+    layers: 2
+    output: 8
+GIN-14:
+  final:
+    hidden: 32
+    input: 8
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 256
+    output: 8
+  phi:
+    hidden: 16
+    input: 8
+    layers: 6
+    output: 8
+GIN-15:
+  final:
+    hidden: 64
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 16
+    output: 16
+  phi:
+    hidden: 256
+    input: 16
+    layers: 4
+    output: 128
+GIN-16:
+  final:
+    hidden: 32
+    input: 64
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 32
+    output: 16
+  phi:
+    hidden: 32
+    input: 16
+    layers: 4
+    output: 64
+GIN-17:
+  final:
+    hidden: 256
+    input: 16
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 64
+    output: 16
+  phi:
+    hidden: 256
+    input: 16
+    layers: 2
+    output: 16
+GIN-18:
+  final:
+    hidden: 16
+    input: 16
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 128
+    output: 16
+  phi:
+    hidden: 128
+    input: 16
+    layers: 6
+    output: 16
+GIN-19:
+  final:
+    hidden: 256
+    input: 8
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 256
+    output: 16
+  phi:
+    hidden: 256
+    input: 16
+    layers: 4
+    output: 8
+GIN-2:
+  final:
+    hidden: 32
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 64
+    output: 8
+  phi:
+    hidden: 128
+    input: 8
+    layers: 4
+    output: 128
+GIN-20:
+  final:
+    hidden: 32
+    input: 64
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 16
+    output: 16
+  phi:
+    hidden: 64
+    input: 16
+    layers: 4
+    output: 64
+GIN-21:
+  final:
+    hidden: 32
+    input: 8
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 32
+    output: 16
+  phi:
+    hidden: 256
+    input: 16
+    layers: 4
+    output: 8
+GIN-22:
+  final:
+    hidden: 128
+    input: 64
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 64
+    output: 16
+  phi:
+    hidden: 16
+    input: 16
+    layers: 2
+    output: 64
+GIN-23:
+  final:
+    hidden: 128
+    input: 8
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 128
+    output: 16
+  phi:
+    hidden: 32
+    input: 16
+    layers: 6
+    output: 8
+GIN-24:
+  final:
+    hidden: 64
+    input: 8
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 256
+    output: 16
+  phi:
+    hidden: 16
+    input: 16
+    layers: 2
+    output: 8
+GIN-25:
+  final:
+    hidden: 128
+    input: 32
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 16
+    output: 16
+  phi:
+    hidden: 128
+    input: 16
+    layers: 2
+    output: 32
+GIN-26:
+  final:
+    hidden: 32
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 32
+    output: 16
+  phi:
+    hidden: 32
+    input: 16
+    layers: 6
+    output: 128
+GIN-27:
+  final:
+    hidden: 256
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 64
+    output: 16
+  phi:
+    hidden: 128
+    input: 16
+    layers: 4
+    output: 128
+GIN-28:
+  final:
+    hidden: 32
+    input: 8
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 128
+    output: 16
+  phi:
+    hidden: 32
+    input: 16
+    layers: 2
+    output: 8
+GIN-29:
+  final:
+    hidden: 16
+    input: 8
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 256
+    output: 16
+  phi:
+    hidden: 64
+    input: 16
+    layers: 6
+    output: 8
+GIN-3:
+  final:
+    hidden: 32
+    input: 32
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 128
+    output: 8
+  phi:
+    hidden: 16
+    input: 8
+    layers: 6
+    output: 32
+GIN-30:
+  final:
+    hidden: 128
+    input: 128
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 16
+    output: 32
+  phi:
+    hidden: 32
+    input: 32
+    layers: 4
+    output: 128
+GIN-31:
+  final:
+    hidden: 32
+    input: 128
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 32
+    output: 32
+  phi:
+    hidden: 32
+    input: 32
+    layers: 4
+    output: 128
+GIN-32:
+  final:
+    hidden: 256
+    input: 8
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 64
+    output: 32
+  phi:
+    hidden: 64
+    input: 32
+    layers: 2
+    output: 8
+GIN-33:
+  final:
+    hidden: 64
+    input: 32
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 128
+    output: 32
+  phi:
+    hidden: 64
+    input: 32
+    layers: 2
+    output: 32
+GIN-34:
+  final:
+    hidden: 64
+    input: 64
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 256
+    output: 32
+  phi:
+    hidden: 16
+    input: 32
+    layers: 4
+    output: 64
+GIN-35:
+  final:
+    hidden: 64
+    input: 16
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 16
+    output: 32
+  phi:
+    hidden: 64
+    input: 32
+    layers: 6
+    output: 16
+GIN-36:
+  final:
+    hidden: 16
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 32
+    output: 32
+  phi:
+    hidden: 16
+    input: 32
+    layers: 4
+    output: 128
+GIN-37:
+  final:
+    hidden: 32
+    input: 16
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 64
+    output: 32
+  phi:
+    hidden: 16
+    input: 32
+    layers: 2
+    output: 16
+GIN-38:
+  final:
+    hidden: 64
+    input: 64
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 128
+    output: 32
+  phi:
+    hidden: 32
+    input: 32
+    layers: 6
+    output: 64
+GIN-39:
+  final:
+    hidden: 16
+    input: 8
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 256
+    output: 32
+  phi:
+    hidden: 32
+    input: 32
+    layers: 4
+    output: 8
+GIN-4:
+  final:
+    hidden: 16
+    input: 32
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 256
+    output: 8
+  phi:
+    hidden: 256
+    input: 8
+    layers: 4
+    output: 32
+GIN-40:
+  final:
+    hidden: 16
+    input: 16
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 16
+    output: 32
+  phi:
+    hidden: 64
+    input: 32
+    layers: 6
+    output: 16
+GIN-41:
+  final:
+    hidden: 64
+    input: 8
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 32
+    output: 32
+  phi:
+    hidden: 128
+    input: 32
+    layers: 2
+    output: 8
+GIN-42:
+  final:
+    hidden: 128
+    input: 8
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 64
+    output: 32
+  phi:
+    hidden: 256
+    input: 32
+    layers: 2
+    output: 8
+GIN-43:
+  final:
+    hidden: 32
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 128
+    output: 32
+  phi:
+    hidden: 64
+    input: 32
+    layers: 4
+    output: 128
+GIN-44:
+  final:
+    hidden: 128
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 256
+    output: 32
+  phi:
+    hidden: 64
+    input: 32
+    layers: 2
+    output: 128
+GIN-45:
+  final:
+    hidden: 32
+    input: 8
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 16
+    output: 64
+  phi:
+    hidden: 256
+    input: 64
+    layers: 6
+    output: 8
+GIN-46:
+  final:
+    hidden: 32
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 32
+    output: 64
+  phi:
+    hidden: 128
+    input: 64
+    layers: 2
+    output: 128
+GIN-47:
+  final:
+    hidden: 64
+    input: 64
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 64
+    output: 64
+  phi:
+    hidden: 32
+    input: 64
+    layers: 4
+    output: 64
+GIN-48:
+  final:
+    hidden: 32
+    input: 8
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 128
+    output: 64
+  phi:
+    hidden: 256
+    input: 64
+    layers: 2
+    output: 8
+GIN-49:
+  final:
+    hidden: 128
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 256
+    output: 64
+  phi:
+    hidden: 16
+    input: 64
+    layers: 6
+    output: 128
+GIN-5:
+  final:
+    hidden: 16
+    input: 32
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 16
+    output: 8
+  phi:
+    hidden: 32
+    input: 8
+    layers: 6
+    output: 32
+GIN-50:
+  final:
+    hidden: 16
+    input: 32
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 16
+    output: 64
+  phi:
+    hidden: 256
+    input: 64
+    layers: 2
+    output: 32
+GIN-51:
+  final:
+    hidden: 256
+    input: 128
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 32
+    output: 64
+  phi:
+    hidden: 32
+    input: 64
+    layers: 6
+    output: 128
+GIN-52:
+  final:
+    hidden: 256
+    input: 128
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 64
+    output: 64
+  phi:
+    hidden: 16
+    input: 64
+    layers: 2
+    output: 128
+GIN-53:
+  final:
+    hidden: 32
+    input: 128
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 128
+    output: 64
+  phi:
+    hidden: 16
+    input: 64
+    layers: 6
+    output: 128
+GIN-54:
+  final:
+    hidden: 64
+    input: 64
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 256
+    output: 64
+  phi:
+    hidden: 16
+    input: 64
+    layers: 2
+    output: 64
+GIN-55:
+  final:
+    hidden: 16
+    input: 16
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 16
+    output: 64
+  phi:
+    hidden: 128
+    input: 64
+    layers: 6
+    output: 16
+GIN-56:
+  final:
+    hidden: 64
+    input: 32
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 32
+    output: 64
+  phi:
+    hidden: 16
+    input: 64
+    layers: 4
+    output: 32
+GIN-57:
+  final:
+    hidden: 256
+    input: 16
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 64
+    output: 64
+  phi:
+    hidden: 64
+    input: 64
+    layers: 4
+    output: 16
+GIN-58:
+  final:
+    hidden: 64
+    input: 16
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 128
+    output: 64
+  phi:
+    hidden: 64
+    input: 64
+    layers: 6
+    output: 16
+GIN-59:
+  final:
+    hidden: 128
+    input: 16
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 256
+    output: 64
+  phi:
+    hidden: 32
+    input: 64
+    layers: 4
+    output: 16
+GIN-6:
+  final:
+    hidden: 32
+    input: 32
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 32
+    output: 8
+  phi:
+    hidden: 256
+    input: 8
+    layers: 4
+    output: 32
+GIN-60:
+  final:
+    hidden: 64
+    input: 8
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 16
+    output: 128
+  phi:
+    hidden: 256
+    input: 128
+    layers: 6
+    output: 8
+GIN-61:
+  final:
+    hidden: 16
+    input: 128
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 32
+    output: 128
+  phi:
+    hidden: 32
+    input: 128
+    layers: 4
+    output: 128
+GIN-62:
+  final:
+    hidden: 32
+    input: 64
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 64
+    output: 128
+  phi:
+    hidden: 32
+    input: 128
+    layers: 2
+    output: 64
+GIN-63:
+  final:
+    hidden: 256
+    input: 64
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 128
+    output: 128
+  phi:
+    hidden: 128
+    input: 128
+    layers: 2
+    output: 64
+GIN-64:
+  final:
+    hidden: 128
+    input: 32
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GINLayer
+    layers: 256
+    output: 128
+  phi:
+    hidden: 64
+    input: 128
+    layers: 6
+    output: 32
+GIN-65:
+  final:
+    hidden: 256
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 16
+    output: 128
+  phi:
+    hidden: 256
+    input: 128
+    layers: 6
+    output: 128
+GIN-66:
+  final:
+    hidden: 32
+    input: 8
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 32
+    output: 128
+  phi:
+    hidden: 128
+    input: 128
+    layers: 6
+    output: 8
+GIN-67:
+  final:
+    hidden: 128
+    input: 16
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 64
+    output: 128
+  phi:
+    hidden: 32
+    input: 128
+    layers: 6
+    output: 16
+GIN-68:
+  final:
+    hidden: 16
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 128
+    output: 128
+  phi:
+    hidden: 16
+    input: 128
+    layers: 4
+    output: 128
+GIN-69:
+  final:
+    hidden: 64
+    input: 16
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 256
+    output: 128
+  phi:
+    hidden: 128
+    input: 128
+    layers: 6
+    output: 16
+GIN-7:
+  final:
+    hidden: 128
+    input: 8
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 64
+    output: 8
+  phi:
+    hidden: 128
+    input: 8
+    layers: 4
+    output: 8
+GIN-70:
+  final:
+    hidden: 256
+    input: 64
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 16
+    output: 128
+  phi:
+    hidden: 32
+    input: 128
+    layers: 4
+    output: 64
+GIN-71:
+  final:
+    hidden: 128
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 32
+    output: 128
+  phi:
+    hidden: 16
+    input: 128
+    layers: 6
+    output: 128
+GIN-72:
+  final:
+    hidden: 128
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 64
+    output: 128
+  phi:
+    hidden: 32
+    input: 128
+    layers: 6
+    output: 128
+GIN-73:
+  final:
+    hidden: 256
+    input: 32
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 128
+    output: 128
+  phi:
+    hidden: 256
+    input: 128
+    layers: 2
+    output: 32
+GIN-74:
+  final:
+    hidden: 32
+    input: 8
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 6
+    input: 3
+    layer_type: GINLayer
+    layers: 256
+    output: 128
+  phi:
+    hidden: 32
+    input: 128
+    layers: 4
+    output: 8
+GIN-8:
+  final:
+    hidden: 32
+    input: 128
+    layers: 6
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 128
+    output: 8
+  phi:
+    hidden: 256
+    input: 8
+    layers: 2
+    output: 128
+GIN-9:
+  final:
+    hidden: 64
+    input: 16
+    layers: 4
+    output: 1
+  gnn:
+    hidden: 4
+    input: 3
+    layer_type: GINLayer
+    layers: 256
+    output: 8
+  phi:
+    hidden: 256
+    input: 8
+    layers: 6
+    output: 16

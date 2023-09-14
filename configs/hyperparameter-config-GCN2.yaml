@@ -1,0 +1,425 @@
+GCN2-0:
+  final:
+    hidden: 16
+    input: 128
+    layers: 3
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 16
+    output: 8
+  phi:
+    hidden: 16
+    input: 8
+    layers: 1
+    output: 128
+GCN2-1:
+  final:
+    hidden: 256
+    input: 64
+    layers: 1
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 32
+    output: 8
+  phi:
+    hidden: 64
+    input: 8
+    layers: 3
+    output: 64
+GCN2-10:
+  final:
+    hidden: 64
+    input: 8
+    layers: 1
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 16
+    output: 32
+  phi:
+    hidden: 128
+    input: 32
+    layers: 1
+    output: 8
+GCN2-11:
+  final:
+    hidden: 32
+    input: 128
+    layers: 1
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 32
+    output: 32
+  phi:
+    hidden: 16
+    input: 32
+    layers: 2
+    output: 128
+GCN2-12:
+  final:
+    hidden: 16
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 64
+    output: 32
+  phi:
+    hidden: 16
+    input: 32
+    layers: 3
+    output: 128
+GCN2-13:
+  final:
+    hidden: 16
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 128
+    output: 32
+  phi:
+    hidden: 128
+    input: 32
+    layers: 3
+    output: 128
+GCN2-14:
+  final:
+    hidden: 256
+    input: 128
+    layers: 3
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 256
+    output: 32
+  phi:
+    hidden: 16
+    input: 32
+    layers: 1
+    output: 128
+GCN2-15:
+  final:
+    hidden: 256
+    input: 64
+    layers: 3
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 16
+    output: 64
+  phi:
+    hidden: 256
+    input: 64
+    layers: 3
+    output: 64
+GCN2-16:
+  final:
+    hidden: 16
+    input: 64
+    layers: 3
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 32
+    output: 64
+  phi:
+    hidden: 16
+    input: 64
+    layers: 2
+    output: 64
+GCN2-17:
+  final:
+    hidden: 32
+    input: 16
+    layers: 3
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 64
+    output: 64
+  phi:
+    hidden: 32
+    input: 64
+    layers: 2
+    output: 16
+GCN2-18:
+  final:
+    hidden: 32
+    input: 16
+    layers: 1
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 128
+    output: 64
+  phi:
+    hidden: 256
+    input: 64
+    layers: 2
+    output: 16
+GCN2-19:
+  final:
+    hidden: 16
+    input: 8
+    layers: 1
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 256
+    output: 64
+  phi:
+    hidden: 16
+    input: 64
+    layers: 3
+    output: 8
+GCN2-2:
+  final:
+    hidden: 256
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 64
+    output: 8
+  phi:
+    hidden: 128
+    input: 8
+    layers: 3
+    output: 128
+GCN2-20:
+  final:
+    hidden: 32
+    input: 32
+    layers: 3
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 16
+    output: 128
+  phi:
+    hidden: 64
+    input: 128
+    layers: 2
+    output: 32
+GCN2-21:
+  final:
+    hidden: 32
+    input: 16
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 32
+    output: 128
+  phi:
+    hidden: 256
+    input: 128
+    layers: 2
+    output: 16
+GCN2-22:
+  final:
+    hidden: 16
+    input: 32
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 64
+    output: 128
+  phi:
+    hidden: 16
+    input: 128
+    layers: 2
+    output: 32
+GCN2-23:
+  final:
+    hidden: 64
+    input: 32
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 128
+    output: 128
+  phi:
+    hidden: 128
+    input: 128
+    layers: 3
+    output: 32
+GCN2-24:
+  final:
+    hidden: 16
+    input: 16
+    layers: 3
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 256
+    output: 128
+  phi:
+    hidden: 32
+    input: 128
+    layers: 1
+    output: 16
+GCN2-3:
+  final:
+    hidden: 32
+    input: 16
+    layers: 1
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 128
+    output: 8
+  phi:
+    hidden: 64
+    input: 8
+    layers: 3
+    output: 16
+GCN2-4:
+  final:
+    hidden: 256
+    input: 32
+    layers: 1
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 256
+    output: 8
+  phi:
+    hidden: 16
+    input: 8
+    layers: 2
+    output: 32
+GCN2-5:
+  final:
+    hidden: 32
+    input: 64
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 16
+    output: 16
+  phi:
+    hidden: 64
+    input: 16
+    layers: 3
+    output: 64
+GCN2-6:
+  final:
+    hidden: 128
+    input: 128
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 32
+    output: 16
+  phi:
+    hidden: 64
+    input: 16
+    layers: 3
+    output: 128
+GCN2-7:
+  final:
+    hidden: 16
+    input: 16
+    layers: 1
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 64
+    output: 16
+  phi:
+    hidden: 128
+    input: 16
+    layers: 1
+    output: 16
+GCN2-8:
+  final:
+    hidden: 256
+    input: 64
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 128
+    output: 16
+  phi:
+    hidden: 16
+    input: 16
+    layers: 2
+    output: 64
+GCN2-9:
+  final:
+    hidden: 16
+    input: 32
+    layers: 2
+    output: 1
+  gnn:
+    hidden: 2
+    input: 3
+    layer_type: GCN2Conv
+    layers: 256
+    output: 16
+  phi:
+    hidden: 256
+    input: 16
+    layers: 2
+    output: 32

@@ -1,0 +1,19 @@
+base-transformer:
+  phi:
+    input: 16
+    hidden: 64
+    output: 32
+    layers: 4
+
+  final:
+    input: 32
+    hidden: 64
+    output: 1
+    layers: 4
+
+  gnn:
+    layer_type: 'Transformer'
+    input: 3
+    hidden: 32
+    output: 16
+    layers: 2

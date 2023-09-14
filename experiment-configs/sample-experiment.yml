@@ -1,0 +1,9 @@
+train_data: norway/norway-1600-train.npz
+test_data: norway/norway-1600-test.npz
+epochs: 100
+device: cuda:0
+batch_size: 128
+dataset_name: norway-1600
+config: configs/config-base.yml
+siamese: 1
+vn: 0
