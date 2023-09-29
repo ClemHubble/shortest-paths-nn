@@ -1,2 +1,0 @@
-modelname,loss
-GAT-6-MAPE,"tensor(0.0817, device='cuda:1', dtype=torch.float64)"
