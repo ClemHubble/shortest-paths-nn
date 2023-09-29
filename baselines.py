@@ -2,11 +2,11 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import torch.nn as nn
-from torch_geometric.nn import GCNConv, GINConv, GATConv, GCN2Conv, TransformerConv
+from torch_geometric.nn import GCNConv, GINConv, GATConv, GCN2Conv, TransformerConv, to_hetero
 from torch.nn import ReLU, LeakyReLU, Sigmoid
 
 # Baseline 0
-def initialize_mlp(input, hidden, output, layers, batch_norm=False, activation='relu'):
+def initialize_mlp(input, hidden, output, layers, batch_norm=False, activation='lrelu'):
     if layers == 1:
         hidden=output
     if activation == 'relu':
@@ -15,6 +15,8 @@ def initialize_mlp(input, hidden, output, layers, batch_norm=False, activation='
         func = nn.LeakyReLU
     elif activation=='sigmoid':
         func = nn.Sigmoid
+    elif activation =='softplus':
+        func = nn.Softplus
     else:
         raise NameError('Not implemented')
 
@@ -25,6 +27,7 @@ def initialize_mlp(input, hidden, output, layers, batch_norm=False, activation='
         phi_layers.append(nn.BatchNorm1d(input))
     for i in range(layers - 1):
         if i < layers - 2:
+            phi_layers.append(nn.Dropout(p=0.10))
             phi_layers.append(nn.Linear(hidden, hidden))
             phi_layers.append(func())
             if batch_norm:
@@ -36,23 +39,50 @@ def initialize_mlp(input, hidden, output, layers, batch_norm=False, activation='
     return phi
 
 class MLPBaseline0(nn.Module):
-    def __init__(self, siamese: nn.Module, final: nn.Module):
+    def __init__(self, siamese: nn.Module, final: nn.Module, max=False):
         super(MLPBaseline0, self).__init__()
         self.siamese = siamese
         self.final = final
+        self.max = max
+        print("max?", self.max)
     
     def init_weights(self):
         for m in self.siamese:
             if isinstance(m, nn.Linear):
-                torch.nn.init.normal_(m.weight)
-                torch.nn.init.normal_(m.bias)
+                torch.nn.init.constant_(m.weight, 0.01)
+                torch.nn.init.constant_(m.bias, 0.01)
+        for m in self.final:
+            if isinstance(m, nn.Linear):
+                torch.nn.init.constant_(m.weight, 0.01)
+                torch.nn.init.constant_(m.bias, 0.01)
     
     def forward(self, input1, input2):
         out1 = self.siamese(input1)
         out2 = self.siamese(input2)
+        if not self.max:
+            embd = out1 + out2
+        else:
+            embd = torch.max(out1, out2)
+        return self.final(embd)
 
-        sum_embd = out1 + out2
-        return self.final(sum_embd)
+class MLPBaseline1(nn.Module):
+    def __init__(self, mlp: nn.Module, max=True):
+        super(MLPBaseline1, self).__init__()
+        self.max = max
+        self.mlp = mlp
+    
+    def init_weights(self):
+        for m in self.mlp:
+            if isinstance(m, nn.Linear):
+                torch.nn.init.constant_(m.weight, 0.01)
+                torch.nn.init.constant_(m.bias, 0.01)
+    
+    def forward(self, input1, input2):
+        if not self.max:
+            embd = input1 + input2
+        else:
+            embd = torch.max(input1, input2)
+        return self.mlp(embd)
 
 
 class GINLayer(nn.Module):
@@ -70,7 +100,7 @@ class GINLayer(nn.Module):
 
 class GNNModel(nn.Module):
     def __init__(self, input=3, output=20, hidden=20, layers=2, 
-                 layer_type='GCNConv', activation='LeakyReLU', **kwargs):
+                 layer_type='GATConv', activation='LeakyReLU', **kwargs):
         super(GNNModel, self).__init__()
         torch.manual_seed(1234567)
         # Initialize the first layer
@@ -87,6 +117,8 @@ class GNNModel(nn.Module):
         self.activation = globals()[activation]()
 
     def forward(self, x, edge_index):
+        # x = data.x
+        # edge_index = data.edge_index
         x = self.initial(x, edge_index)
         x = self.activation(x)
         for layer in self.module_list:
@@ -113,7 +145,9 @@ class GCN2Model(torch.nn.Module):
 
         self.dropout = dropout
 
-    def forward(self, x, adj_t):
+    def forward(self, data):
+        x = data.x
+        adj_t = data.adj_t
         x = F.dropout(x, self.dropout, training=self.training)
         x = x_0 = self.lins[0](x).relu()
 
@@ -126,6 +160,52 @@ class GCN2Model(torch.nn.Module):
         x = self.lins[1](x)
 
         return x.log_softmax(dim=-1)
+
+
+class VNModel(torch.nn.Module):
+    def __init__(self, metadata, **kwargs):
+        super().__init__()
+        self.gnn = GNNModel(**kwargs)
+        self.gnn = to_hetero(self.gnn, metadata)
+        
+    def forward(self, data):
+        x_dict = data.x_dict
+        edge_index_dict = data.edge_index_dict
+        output_x_dict = self.gnn(x_dict, edge_index_dict)
+        return output_x_dict['real']
+
+
+class GNN_VN_Model(torch.nn.Module):
+    def __init__(self, input=3, output=20, hidden=20, layers=2, 
+                 layer_type='GATConv', activation='LeakyReLU', **kwargs):
+        super(GNNModel, self).__init__()
+        torch.manual_seed(1234567)
+        # Initialize the first layer
+        graph_layer = globals()[layer_type]
+        self.initial = graph_layer(input, hidden)
+        
+        # Initialize the subsequent layers
+        self.module_list = nn.ModuleList([graph_layer(hidden, hidden) for _ in range(layers - 1)])
+        
+        # Output layer
+        self.output = graph_layer(hidden, output)
+
+        # activation function
+        self.activation = globals()[activation]()
+
+        ## List of MLPS to transform virtual node at every layer
+        self.mlp_virtualnode_list = torch.nn.ModuleList()
+        for layer in range(layers - 1):
+            self.mlp_virtualnode_list.append(
+                    torch.nn.Sequential(
+                        torch.nn.Linear(input, hidden), 
+                        torch.nn.LeakyReLU(negative_slope = 0.1),
+                        torch.nn.Linear(hidden, output), 
+                        torch.nn.LeakyReLU(negative_slope = 0.1)
+                    )
+            )
+    def forward(self, data):
+        self.initial()
 
 class GraphTransformer(torch.nn.Module):
     def __init__(self, input, hidden, output, layers,

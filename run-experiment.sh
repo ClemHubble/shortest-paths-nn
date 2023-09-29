@@ -24,6 +24,7 @@ echo "Testing data: $test_data"
 echo "Device: $device"
 echo "Siamese? $siamese"
 echo "VN? $vn"
+echo "Max if not Siamese? $max"
 
 python train_baselines.py --train-data $train_data \
 --test-data $test_data \
@@ -33,4 +34,5 @@ python train_baselines.py --train-data $train_data \
 --dataset-name $dataset_name \
 --config $config \
 --siamese $siamese \
---vn $vn 
+--vn $vn \
+--max $max 

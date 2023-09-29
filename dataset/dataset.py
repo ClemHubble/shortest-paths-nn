@@ -82,6 +82,7 @@ def construct_nx_graph(xv, yv, elevation, res):
     print("Size of graph:", len(node_features))
     return G, node_features
 
+
 def construct_pyg_dataset(G, node_features, filename, size=100):
     Nodes = np.sort(list(G.nodes()))
 
@@ -108,7 +109,20 @@ def construct_pyg_dataset(G, node_features, filename, size=100):
     tars = []
     lengths = []
     print("Generating shortest paths......")
-    #size = len(Nodes)
+    
+    # lst = np.random.choice(len(node_features), size=10, replace=False)
+    # for i in tqdm(lst):
+    #     for k in range(20):
+    #         k_hops = nx.single_source_shortest_path(G, i, cutoff=k)
+    #         for tar in k_hops:
+    #             if tar == i :
+    #                 continue
+    #             length = nx.shortest_path_length(G, i, tar, weight='weight')
+    #             srcs.append(i)
+    #             tars.append(tar)
+    #             lengths.append(length)
+
+    # size = len(Nodes)
     # for i in trange(size):
     #     for j in range(i+1, size):
     #         #src, tar = np.random.choice(len(node_features), [2,], replace=False)
@@ -118,11 +132,12 @@ def construct_pyg_dataset(G, node_features, filename, size=100):
     #         tars.append(tar)
     #         length = nx.shortest_path_length(G, src, tar, weight='weight')
     #         lengths.append(length)
+
     for i in trange(size):
         src, tar = np.random.choice(len(node_features), [2,], replace=False)
         srcs.append(src)
         tars.append(tar)
-        length = nx.shortest_path_length(G, src, tar, weight='weight')
+        length = nx.shortest_path_length(G, src, tar)
         lengths.append(length)
     print("Saved dataset in:", filename)
     np.savez(filename, 

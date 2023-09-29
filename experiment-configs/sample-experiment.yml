@@ -1,9 +1,11 @@
 train_data: norway/norway-1600-train.npz
 test_data: norway/norway-1600-test.npz
-epochs: 100
-device: cuda:0
-batch_size: 128
+epochs: 10
+device: cuda:6
+batch_size: 32
 dataset_name: norway-1600
-config: configs/config-base.yml
+config: configs/best-config-GAT.yml
 siamese: 1
 vn: 0
+max: 1
+loss: mse_loss

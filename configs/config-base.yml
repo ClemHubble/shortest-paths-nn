@@ -12,7 +12,7 @@ base-transformer:
     layers: 4
 
   gnn:
-    layer_type: 'Transformer'
+    layer_type: 'Transformer-LPE'
     input: 3
     hidden: 32
     output: 16
