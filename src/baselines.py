@@ -2,11 +2,12 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import torch.nn as nn
-from torch_geometric.nn import GCNConv, GINConv, GATConv, GCN2Conv, TransformerConv, to_hetero
+from torch_geometric.nn import GCNConv, GINConv, GATConv, GCN2Conv, TransformerConv, to_hetero, GeneralConv
 from torch.nn import ReLU, LeakyReLU, Sigmoid
-
+from torch_geometric.nn.conv import MessagePassing
+ 
 # Baseline 0
-def initialize_mlp(input, hidden, output, layers, batch_norm=False, activation='lrelu'):
+def initialize_mlp(input, hidden, output, layers, batch_norm=False, activation='relu', **kwargs):
     if layers == 1:
         hidden=output
     if activation == 'relu':
@@ -27,7 +28,7 @@ def initialize_mlp(input, hidden, output, layers, batch_norm=False, activation='
         phi_layers.append(nn.BatchNorm1d(input))
     for i in range(layers - 1):
         if i < layers - 2:
-            phi_layers.append(nn.Dropout(p=0.10))
+            phi_layers.append(nn.Dropout(p=0.30))
             phi_layers.append(nn.Linear(hidden, hidden))
             phi_layers.append(func())
             if batch_norm:
@@ -66,10 +67,10 @@ class MLPBaseline0(nn.Module):
         return self.final(embd)
 
 class MLPBaseline1(nn.Module):
-    def __init__(self, mlp: nn.Module, max=True):
+    def __init__(self, mlp: nn.Module, max=True, aggr='max'):
         super(MLPBaseline1, self).__init__()
-        self.max = max
         self.mlp = mlp
+        self.aggr=aggr
     
     def init_weights(self):
         for m in self.mlp:
@@ -78,10 +79,15 @@ class MLPBaseline1(nn.Module):
                 torch.nn.init.constant_(m.bias, 0.01)
     
     def forward(self, input1, input2):
-        if not self.max:
-            embd = input1 + input2
-        else:
+        if self.aggr == 'max':
             embd = torch.max(input1, input2)
+        elif self.aggr== 'sum':
+            embd = input1 + input2
+        elif self.aggr == 'min':
+            embd = torch.min(input1, input2)
+        elif self.aggr == 'combine':
+            embd = torch.hstack((input1 + input2, torch.max(input1, input2), torch.min(input1, input2)))
+ 
         return self.mlp(embd)
 
 
@@ -97,7 +103,35 @@ class GINLayer(nn.Module):
         output = self.layer(x, edge_index)
         return output
 
+class GeneralConvMaxAttention(nn.Module):
+    def __init__(self, input=3, output=3):
+        super(GeneralConvMaxAttention, self).__init__()
+        self.layer = GeneralConv(in_channels=input, 
+                                out_channels=output,
+                                aggr='max', 
+                                attention=True,
+                                l2_normalize=False)
+        
+    def forward(self, x, edge_index):
+        output = self.layer(x, edge_index)
+        return output
 
+class CNNLayer(nn.Module):
+    def __init__(self, input=3, output=20, **kwargs):
+        super(CNNLayer, self).__init__()
+        self.layer = nn.Conv2d(in_channels=input, 
+                                 out_channels=output, 
+                                 kernel_size=1)
+    
+    def forward(self, x, edge_index):
+        output = self.layer(x)
+        return output
+
+"""
+Base GNN model - can take GATConv, GIN, GeneralConvMaxAttention
+and CNNLayer. Technically, CNNLayer is not a graph layer but it
+can work in this case because of how the terrain data is structured. 
+"""
 class GNNModel(nn.Module):
     def __init__(self, input=3, output=20, hidden=20, layers=2, 
                  layer_type='GATConv', activation='LeakyReLU', **kwargs):
@@ -127,7 +161,9 @@ class GNNModel(nn.Module):
         x = self.output(x, edge_index)
         return x
 
-
+"""
+GCN2 neural network as GCN2Conv does not work with the base GNN model. 
+"""
 class GCN2Model(torch.nn.Module):
     def __init__(self,alpha=0.1, theta=0.5, input=3, hidden=20, output=20,layers=2, 
                  shared_weights=True, dropout=0.0, **kwargs):
@@ -161,7 +197,12 @@ class GCN2Model(torch.nn.Module):
 
         return x.log_softmax(dim=-1)
 
-
+"""
+Heterogeneous GNN with virtual nodes. 
+TODO: This implementation may need to be changed as currently
+the memory requirement for even a single virtual node is high for
+a graph with 250,000 nodes. 
+"""
 class VNModel(torch.nn.Module):
     def __init__(self, metadata, **kwargs):
         super().__init__()
@@ -173,6 +214,7 @@ class VNModel(torch.nn.Module):
         edge_index_dict = data.edge_index_dict
         output_x_dict = self.gnn(x_dict, edge_index_dict)
         return output_x_dict['real']
+
 
 
 class GNN_VN_Model(torch.nn.Module):
@@ -207,6 +249,9 @@ class GNN_VN_Model(torch.nn.Module):
     def forward(self, data):
         self.initial()
 
+"""
+Graph transformer model. 
+"""
 class GraphTransformer(torch.nn.Module):
     def __init__(self, input, hidden, output, layers,
                  heads=2, dropout=0.3, **kwargs):

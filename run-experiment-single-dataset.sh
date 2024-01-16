@@ -17,6 +17,7 @@ function parse_yaml {
 }
 
 echo "Experiment config: $1"
+echo "Trial: $2"
 
 eval $(parse_yaml $1)
 echo "Training data: $train_data"
@@ -24,9 +25,10 @@ echo "Testing data: $test_data"
 echo "Device: $device"
 echo "Siamese? $siamese"
 echo "VN? $vn"
-echo "Max if not Siamese? $max"
+echo "layer type: $layer_type"
+echo "Aggr: $aggr"
 
-python train_baselines.py --train-data $train_data \
+python train_single_dataset.py --train-data $train_data \
 --test-data $test_data \
 --epochs $epochs\
  --device $device \
@@ -35,4 +37,6 @@ python train_baselines.py --train-data $train_data \
 --config $config \
 --siamese $siamese \
 --vn $vn \
---max $max 
+--layer-type $layer_type \
+--aggr $aggr \
+--trial $2

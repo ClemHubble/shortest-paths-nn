@@ -11,10 +11,17 @@ from torch_geometric.utils import (
     is_undirected
 )
 from scipy.sparse.linalg import eigs, eigsh
+from torch_geometric.transforms import ToUndirected
 
-from baselines import *
+from .baselines import *
 
-
+class TerrainHeteroData(HeteroData):
+    def __inc__(self, key, value, *args, **kwargs):
+        if key == 'src':
+            return self['real'].x.size(0)
+        if key == 'tar':
+            return self['real'].x.size(0)
+        return super().__inc__(key, value, *args, **kwargs)
 
 def add_node_attr(data: Data, value: Any,
                   attr_name: Optional[str] = None) -> Data:
@@ -73,7 +80,26 @@ def add_virtual_node(data):
         vn_edge_index[0].append(0)
         vn_edge_index[1].append(i)
     hetero_data['vn', 'e2', 'real'].edge_index = torch.tensor(vn_edge_index, dtype=torch.long)
+    
+    return hetero_data
 
+def add_virtual_node_patch(data):
+    hetero_data = TerrainHeteroData()
+    sz_features = data.x.size()[1]
+    hetero_data.src = data.src
+    hetero_data.tar = data.tar
+    hetero_data.length = data.length
+    hetero_data['real'].x = data.x.double()
+    hetero_data['real', 'e1', 'real'].edge_index = data.edge_index
+
+    vn = torch.zeros(size = (1, sz_features), dtype=torch.double )
+    hetero_data['vn'].x = vn
+    vn_edge_index = [[], []]
+    for i in range(data.x.size()[0]):
+        vn_edge_index[0].append(0)
+        vn_edge_index[1].append(i)
+    hetero_data['vn', 'e2', 'real'].edge_index = torch.tensor(vn_edge_index, dtype=torch.long)
+    hetero_data = ToUndirected()(hetero_data)
     return hetero_data
 
 def test():
