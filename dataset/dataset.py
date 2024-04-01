@@ -10,9 +10,10 @@ import itertools
 
 import argparse
 
-DATASET_INFO = {'norway': [10, False], 'phil': [3, True], 'holland': [1.524, True]}
+DATASET_INFO = {'norway': [10, False], 'phil': [3, True], 'holland': [1.524, True], 'la': [28.34, False]}
 
-# Load DEM data from file
+# Load DEM data from file, 
+# outputs elevations in meters
 def load_dem_data_(filename, imperial=False):
     f = open(filename)
 
@@ -33,6 +34,7 @@ def load_dem_data_(filename, imperial=False):
     return arr
 
 # Get DEM array xloc and yloc
+# outputs all relevant values in km
 def get_dem_xv_yv_(arr, resolution, visualize=True):
     sz = arr.shape[0]
     total_width = resolution * sz
@@ -62,14 +64,16 @@ def get_array_neighbors_(x, y, left=0, right=500, radius=1):
     return neighbors
 
 # External use ok
-def construct_nx_graph(xv, yv, elevation):
+def construct_nx_graph(xv, yv, elevation, triangles=False, p=2):
+    
     n = elevation.shape[0]
     m = elevation.shape[1]
     counts = np.reshape(np.arange(0, n*m), (n, m))
     G = nx.Graph()
 
     node_features = []
-
+    #fig = plt.figure()
+    #ax = fig.add_subplot(projection='3d')
     for i in trange(0, n):
         for j in range(0, m):
             idx1 = counts[i, j]
@@ -79,10 +83,23 @@ def construct_nx_graph(xv, yv, elevation):
             for neighbor in neighbors:
                 p1 = np.array([xv[i, j], yv[i, j], elevation[i, j]])
                 p2 = np.array([xv[neighbor[0], neighbor[1]], yv[neighbor[0], neighbor[1]], elevation[neighbor[0], neighbor[1]]])
-                w = np.linalg.norm(p1 - p2)
+                w = np.linalg.norm(p1 - p2, ord=p)
+                #ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], color='black')
                 idx2 = counts[neighbor[0], neighbor[1]]
                 G.add_edge(idx1, idx2, weight=w)
     print("Size of graph:", len(node_features))
+    if triangles:
+        for i in trange(0, n - 1):
+            for j in range(0, m - 1):
+                # index cell by top left coordinate
+                triangle_edge = [(counts[i, j], counts[i + 1, j + 1]), (counts[i + 1, j], counts[i, j + 1])]
+                edge = triangle_edge[np.random.choice(2)]
+                p1 = node_features[edge[0]]
+                p2 = node_features[edge[1]]
+                w = np.linalg.norm(p1 - p2, ord = p)
+                #ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], color='black')
+                G.add_edge(edge[0], edge[1], weight=w)
+    #fig.savefig('../images/norway-250.png')
     return G, node_features
 
 def to_pyg_graph(G):
@@ -148,30 +165,28 @@ def construct_pyg_dataset(G, node_features, filename, size=100, distance_based=F
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--name', type=str)
     parser.add_argument('--raw-data', type=str)
     parser.add_argument('--filename', type=str)
     parser.add_argument('--graph-resolution', type=int)
     parser.add_argument('--dataset-size', type=int)
     parser.add_argument('--distance-based-sampling', action='store_true')
+    parser.add_argument('--triangles', action='store_true')
 
     args = parser.parse_args()
-    if 'norway' in args.raw_data:
-        dem_res = DATASET_INFO['norway'][0]
-        imperial = DATASET_INFO['norway'][1]
-    elif 'holland' in args.raw_data:
-        dem_res = DATASET_INFO['holland'][0]
-        imperial = DATASET_INFO['holland'][1]
-    elif 'phil' in args.raw_data:
-        dem_res = DATASET_INFO['phil'][0]
-        imperial = DATASET_INFO['phil'][1]
-
-    dem_array = load_dem_data_(args.raw_data, imperial)
+    dem_res = DATASET_INFO[args.name][0]
+    imperial = DATASET_INFO[args.name][1]
+    if args.name == 'la':
+        dem_array = np.load(args.raw_data)
+    else:
+        dem_array = load_dem_data_(args.raw_data, imperial)
     xv, yv, elevations = get_dem_xv_yv_(dem_array, dem_res)
     xv = xv[::args.graph_resolution, ::args.graph_resolution]
     yv = yv[::args.graph_resolution, ::args.graph_resolution]
     elevations = elevations[::args.graph_resolution, ::args.graph_resolution]
+    print('terrain shape:', elevations.shape)
 
-    G, node_features = construct_nx_graph(xv, yv, elevations)
+    G, node_features = construct_nx_graph(xv, yv, elevations, triangles=args.triangles, )
 
     construct_pyg_dataset(G, 
                           node_features, 

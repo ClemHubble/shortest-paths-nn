@@ -1,6 +1,6 @@
 import argparse
 from tqdm import tqdm, trange
-from torch.optim import Adam
+from torch.optim import Adam, AdamW
 from torch_geometric.data import Data, HeteroData
 from torch_geometric.loader import DataLoader
 
@@ -21,6 +21,8 @@ import csv
 import logging
 
 import time
+
+from torch.profiler import profile, record_function, ProfilerActivity
 
 MSE = nn.MSELoss()
 
@@ -91,14 +93,19 @@ def compute_patch_validation_loss(gnn_model, dataloader, mlp=None, device='cuda:
         elif isinstance(gnn_model, VNModel):
             node_embeddings = gnn_model(batch)
         else:
-            node_embeddings = gnn_model(batch.x)
+            node_embeddings = gnn_model(batch.x, batch.edge_index, batch=batch)
         if mlp == None:
             pred = torch.norm(node_embeddings[batch.src] - node_embeddings[batch.tar], p=1, dim=1)
         else:
             pred = mlp(node_embeddings[batch.src], node_embeddings[batch.tar])
             pred=pred.squeeze()
         nz = torch.nonzero(batch.length)
-        relative_losses = torch.sum(torch.abs(pred[nz] - batch.length[nz])/batch.length[nz])
+        if len(batch.length) == 1 and len(nz) == 1:
+            continue
+        elif len(batch.length) == 1:
+            relative_losses = torch.sum(torch.abs(pred - batch.length)/batch.length)
+        else:
+            relative_losses = torch.sum(torch.abs(pred[nz] - batch.length[nz])/batch.length[nz])
         total += relative_losses.detach()
         count += len(batch.src)
 
@@ -123,25 +130,30 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
                                  model_config, layer_type, epochs=100, loss_func='nrmse_loss',
                                  device='cuda:0', log_dir='/data/sam',
                                  lr=0.001, siamese=True, save_freq=50, virtual_node=False, 
-                                 aggr='sum', patch=False, metadata=None):
+                                 aggr='sum', patch=False, metadata=None, p=1, hierarchical_vn_params=None,
+                                 log=True, finetune=False, edge_attr = None):
     
     # initiate summary writer
     
     gnn_config = model_config['gnn']
     if not patch:
         graph_data = Data(x=node_features, edge_index=edge_index)
-        test_graph = Data(x=test_node_features, edge_index=test_edge_index)
+        if log:
+            test_graph = Data(x=test_node_features, edge_index=test_edge_index)
     # Add virtual node
-    if virtual_node and not patch:
-        graph_data = add_virtual_node(graph_data)
-        graph_data = ToUndirected()(graph_data)
-        test_graph = add_virtual_node(test_graph)
-        test_graph = ToUndirected()(test_graph)
-        gnn_model = VNModel(graph_data.metadata(), **gnn_config)
-    elif virtual_node and patch:
-        if metadata == None:
-            raise Exception("Must input metadata for heterogeneous GNN")
-        gnn_model = VNModel(metadata, **gnn_config)
+    if virtual_node:
+        gnn_model = GNN_VN_Model(batches=patch, layer_type=layer_type, **gnn_config)
+    elif hierarchical_vn_params != None:
+        gnn_model = GNN_VN_Hierarchical(layer_type=layer_type, **gnn_config)
+
+        # initialize necessary support for hierarchical virtual node message passing
+        # hierarchical_vn_params = {n: 100, m = 100, pct_n: 0.2, pct_m: 0.2 , h_layers: 1}
+        sz_n = int(hierarchical_vn_params['n'] * hierarchical_vn_params['pct_n'])
+        sz_m = int(hierarchical_vn_params['m'] * hierarchical_vn_params['pct_m'])
+        hblocks = None
+        hnum = None
+        hlayers = 0
+
     # GCN2Conv 
     elif layer_type == 'GCN2Conv':
         gnn_model = GCN2Model(**gnn_config)
@@ -162,8 +174,9 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
         gnn_model = initialize_mlp(**deepsets_config)
     else:
         print("Train vanilla GNN")
-        gnn_model = GNNModel(**gnn_config)
-            
+        gnn_model = GNNModel(layer_type=layer_type, **gnn_config)
+    
+    print("Sending model to GPU.....")
     gnn_model = gnn_model.to(torch.double)
     gnn_model.to(device)
 
@@ -174,7 +187,7 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
         mlp_config = model_config['mlp']
         if aggr == 'combine':
             mlp_config['input'] = mlp_config['input'] * 3
-        mlp_nn = initialize_mlp(**mlp_config)
+        mlp_nn = initialize_mlp(**mlp_config, activation='lrelu')
         mlp = MLPBaseline1(mlp_nn, aggr=aggr)
         mlp.init_weights()
         mlp = mlp.to(torch.double)
@@ -182,9 +195,39 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
 
         parameters = list(gnn_model.parameters()) + list(mlp.parameters())
     
-    optimizer = Adam(parameters, lr=lr)
+    
+    # if we finetune the model, we freeze the siamese layer and just train the MLP
+    if finetune:
+        # load previous model from log
+        prev_model_pth = os.path.join(log_dir, 'final_model.pt')
+        model_info = torch.load(prev_model_pth, map_location=device)
+        if mlp:
+            mlp_parameters = model_info['mlp_state_dict']
+            gnn_parameters = model_info['gnn_state_dict']
+            
+            mlp.load_state_dict(mlp_parameters)
+            gnn_model.load_state_dict(gnn_parameters)
 
+        else:
+            gnn_model.load_state_dict(model_info)
+            mlp_config = model_config['mlp']
+            if aggr == 'combine':
+                mlp_config['input'] = mlp_config['input'] * 3
+            mlp_nn = initialize_mlp(**mlp_config, activation='lrelu')
+            mlp = MLPBaseline1(mlp_nn, aggr=aggr)
+            mlp.init_weights()
+            mlp = mlp.to(torch.double)
+            mlp.to(device)
+        
+        log_dir = os.path.join(log_dir, 'finetune/')
+        
+        parameters = mlp.parameters()
+        for param in gnn_model.parameters():
+            param.requires_grad =False
+        siamese = False
     record_dir = os.path.join(log_dir, 'record/')
+
+    optimizer = AdamW(parameters, lr=lr)
     
     if not os.path.exists(record_dir):
         os.makedirs(record_dir)
@@ -199,14 +242,20 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
     logging.info(f'Number of epochs: {epochs}')
     logging.info(f'MLP aggregation: {aggr}')
     logging.info(f'Siamese? {siamese}')
+    logging.info(f'loss function: {loss_func}')
+
+    logging.info(gnn_model)
+    logging.info(mlp)
+    
     logging.info('training......')
     start = time.time()
     for epoch in trange(epochs):
         total_loss = 0
         batch_count = 0
         for batch in train_dataloader:
-
             optimizer.zero_grad()
+            # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
+            #     with record_function('model_inferece'):
             if patch:
                 batch.to(device)
             else:
@@ -219,16 +268,21 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
             # edge_index = edge_index.to(device)
             if layer_type == 'GCN2Conv' or virtual_node:
                 # node_embeddings = gnn_model(graph_data)
-                node_embeddings = gnn_model(batch) if patch else gnn_model(graph_data)
+                node_embeddings = gnn_model(batch.x , batch.edge_index, batch=batch) if patch else gnn_model(graph_data.x, graph_data.edge_index)
             elif layer_type == 'MLP':
                 # node_embeddings = gnn_model(graph_data.x)
                 node_embeddings = gnn_model(batch.x) if patch else gnn_model(graph_data.x)
+            elif isinstance(gnn_model, GNN_VN_Hierarchical):
+                if patch:
+                    raise Exception("Not supported for patch datasets")
+                node_embeddings = gnn_model(graph_data.x, graph_data.edge_index, hblocks, 1, hnum)
             else:
                 # node_embeddings = gnn_model(graph_data.x, graph_data.edge_index)
                 node_embeddings = gnn_model(batch.x, batch.edge_index) if patch else gnn_model(graph_data.x, graph_data.edge_index)
+
             if siamese:
                 # pred = torch.norm(node_embeddings[srcs] - node_embeddings[tars], p=1, dim=1)
-                pred = torch.norm(node_embeddings[batch.src] - node_embeddings[batch.tar], p=1, dim=1) if patch else torch.norm(node_embeddings[srcs] - node_embeddings[tars], p=1, dim=1)
+                pred = torch.norm(node_embeddings[batch.src] - node_embeddings[batch.tar], p=p, dim=1) if patch else torch.norm(node_embeddings[srcs] - node_embeddings[tars], p=p, dim=1)
             else:
                 pred = mlp(node_embeddings[batch.src], node_embeddings[batch.tar]) if patch else mlp(node_embeddings[srcs], node_embeddings[tars])
                 pred = pred.squeeze()
@@ -239,44 +293,49 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
             batch_count += 1
             loss.backward()
             optimizer.step()
-        if not patch:
-            test_graph = test_graph.to(device)
-            graph_data = graph_data.to(device)
+                # print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+                # h()
+        if log:
+            if not patch:
+                test_graph = test_graph.to(device)
+                graph_data = graph_data.to(device)
 
-            if virtual_node or layer_type == 'GCN2Conv':
-                test_node_embeddings = gnn_model(test_graph)
-                train_node_embeddings = gnn_model(graph_data)
-            elif layer_type=='MLP':
-                
-                test_node_embeddings = gnn_model(test_graph.x)
-                train_node_embeddings = gnn_model(graph_data.x)
+                if layer_type == 'GCN2Conv':
+                    test_node_embeddings = gnn_model(test_graph)
+                    train_node_embeddings = gnn_model(graph_data)
+                elif layer_type=='MLP':
+                    test_node_embeddings = gnn_model(test_graph.x)
+                    train_node_embeddings = gnn_model(graph_data.x)
+                elif isinstance(gnn_model, GNN_VN_Hierarchical):
+                    test_node_embeddings = gnn_model(test_graph.x, test_graph.edge_index, hblocks, 1, hnum)
+                    train_node_embeddings = gnn_model(graph_data.x, graph_data.edge_index, hblocks, 1, hnum)
+                else:
+                    test_node_embeddings = gnn_model(test_graph.x, test_graph.edge_index)
+                    train_node_embeddings = gnn_model(graph_data.x, graph_data.edge_index)
+
+                val_loss = compute_validation_loss(test_node_embeddings, test_dataloader, mlp=mlp, device=device)
+                train_relative_loss = compute_validation_loss(train_node_embeddings, train_dataloader, mlp=mlp, device=device)
             else:
-                test_node_embeddings = gnn_model(test_graph.x, test_graph.edge_index)
-                train_node_embeddings = gnn_model(graph_data.x, graph_data.edge_index)
-
-            val_loss = compute_validation_loss(test_node_embeddings, test_dataloader, mlp=mlp, device=device)
-            train_relative_loss = compute_validation_loss(train_node_embeddings, train_dataloader, mlp=mlp, device=device)
-        else:
-            val_loss = compute_patch_validation_loss(gnn_model, test_dataloader, mlp=mlp, device=device)
-            train_relative_loss = compute_patch_validation_loss(gnn_model, train_dataloader, mlp=mlp, device=device)
+                val_loss = compute_patch_validation_loss(gnn_model, test_dataloader, mlp=mlp, device=device)
+                train_relative_loss = compute_patch_validation_loss(gnn_model, train_dataloader, mlp=mlp, device=device)
+                
+            if epoch == epochs - 1:
+                end = time.time()
+                logging.info(f'Trained in {end - start} seconds')
+                logging.info(f"epoch:{epoch} train loss:{(total_loss/batch_count).item()}")
+                logging.info(f"epoch:{epoch} test loss (relative error):{val_loss.item()}")
+                print("epoch:", epoch, "test loss (relative error):", val_loss)
+                print("epoch:", epoch, "train loss", train_relative_loss)
+                print("epoch:", epoch, "total epoch loss", total_loss/batch_count)
+                
             
-        if epoch == epochs - 1:
-            end = time.time()
-            logging.info(f'Trained in {end - start} seconds')
-            logging.info(f"epoch:{epoch} train loss:{(total_loss/batch_count).item()}")
-            logging.info(f"epoch:{epoch} test loss (relative error):{val_loss.item()}")
-            print("epoch:", epoch, "test loss (relative error):", val_loss)
-            print("epoch:", epoch, "train loss", train_relative_loss)
-            print("epoch:", epoch, "total epoch loss", total_loss/batch_count)
-            
-        
-        writer.add_scalar('train/mse_loss', total_loss/batch_count, epoch)
-        writer.add_scalar('train/relative_loss', train_relative_loss, epoch)
-        writer.add_scalar('test/relative_loss', val_loss, epoch)
-        writer.add_scalars('test/generalization-relative', 
-                          {'val': val_loss, 
-                           'train': train_relative_loss}, 
-                          epoch)
+            writer.add_scalar('train/mse_loss', total_loss/batch_count, epoch)
+            writer.add_scalar('train/relative_loss', train_relative_loss, epoch)
+            writer.add_scalar('test/relative_loss', val_loss, epoch)
+            writer.add_scalars('test/generalization-relative', 
+                            {'val': val_loss, 
+                            'train': train_relative_loss}, 
+                            epoch)
         if epoch % save_freq == 0:
             if siamese:
                 path = os.path.join(record_dir, f'model_{epoch}.pt')
@@ -334,11 +393,15 @@ def main():
     parser.add_argument('--max', type=int, default=1)
     parser.add_argument('--loss', type=str, default='mse_loss')
     parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--p', type=int, default=1)
+    parser.add_argument('--finetune', type=int, default=0)
 
     args = parser.parse_args()
     siamese = True if args.siamese == 1 else False
     vn = True if args.vn == 1 else False 
     max_agg = True if args.max == 1 else False
+
+    finetune= True if args.finetune==1 else False
 
     # Load data 
     train_file = os.path.join(output_dir, 'data', args.train_data)
@@ -366,7 +429,8 @@ def main():
         output = train_single_graph_baseline1(train_node_features, train_edge_index, train_dataloader, 
                                             test_node_features, test_edge_index, test_dataloader, loss_func=args.loss,
                                             model_config = config, epochs=args.epochs, device=args.device,
-                                            siamese=siamese, log_dir=log_dir, virtual_node=vn, max=max_agg, lr=args.lr)
+                                            siamese=siamese, log_dir=log_dir, virtual_node=vn, max=max_agg, lr=args.lr, p=args.p,
+                                            log=False, finetune=finetune)
         loss_data.append({'modelname':modelname, 'loss':output[-1]})
 
     # Keep track of validation losses for each configuration
@@ -381,6 +445,7 @@ def main():
                             'siamese' if siamese else 'mlp', 
                             'vn' if vn else 'no-vn', 
                             'max' if max_agg else 'sum', 
+                            f'p-{args.p}',
                             args.loss)
     if not os.path.exists(csv_file):
         os.makedirs(csv_file)

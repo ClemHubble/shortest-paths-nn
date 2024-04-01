@@ -27,6 +27,7 @@ echo "Siamese? $siamese"
 echo "VN? $vn"
 echo "layer type: $layer_type"
 echo "Aggr: $aggr"
+echo "Loss: $loss"
 
 python train_single_dataset_patch.py --train-data $train_data \
 --test-data $test_data \
@@ -39,4 +40,5 @@ python train_single_dataset_patch.py --train-data $train_data \
 --vn $vn \
 --layer-type $layer_type \
 --aggr $aggr \
+--loss $loss \
 --trial $2

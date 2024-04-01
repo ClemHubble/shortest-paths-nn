@@ -31,6 +31,7 @@ def format_log_dir(output_dir,
                    aggr, 
                    loss_func, 
                    layer_type,
+                   p,
                    trial):
     log_dir = os.path.join(output_dir, 
                            'models',
@@ -38,7 +39,8 @@ def format_log_dir(output_dir,
                            dataset_name, 
                            layer_type,
                            'vn' if vn else 'no-vn',
-                           'siamese' if siamese else 'mlp')
+                           'siamese' if siamese else 'mlp',
+                           f'p-{p}')
     if not siamese:
         log_dir = os.path.join(log_dir, aggr)
     log_dir = os.path.join(log_dir, loss_func, modelname, trial)
@@ -63,11 +65,15 @@ def main():
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--layer-type', type=str)
     parser.add_argument('--trial', type=str)
+    parser.add_argument('--p', type=int, default=1 )
+    parser.add_argument('--finetune', type=int, default=0)
+    parser.add_argument('--include-edge-attr', type=int, default=0)
 
     args = parser.parse_args()
     siamese = True if args.siamese == 1 else False
     vn = True if args.vn == 1 else False 
     aggr = args.aggr
+    finetune=True if args.finetune == 1 else False
 
     # Load data 
     train_file = os.path.join(output_dir, 'data', args.train_data)
@@ -77,6 +83,10 @@ def main():
     test_data = np.load(test_file, allow_pickle=True)
 
     train_dataset, train_node_features, train_edge_index = npz_to_dataset(train_data)
+    train_edge_attr = None 
+    if args.include_edge_attr:
+        train_edge_attr = train_data['distances']
+    print("Number of nodes:", len(train_node_features))
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False)
 
     test_dataset, test_node_features, test_edge_index = npz_to_dataset(test_data)
@@ -97,13 +107,15 @@ def main():
                                 aggr, 
                                 args.loss, 
                                 args.layer_type,
+                                args.p,
                                 args.trial)
         config=model_configs[modelname]
 
         output = train_single_graph_baseline1(train_node_features, train_edge_index, train_dataloader, 
                                             test_node_features, test_edge_index, test_dataloader,layer_type=args.layer_type, 
                                             loss_func=args.loss, model_config = config, epochs=args.epochs, device=args.device,
-                                            siamese=siamese, log_dir=log_dir, virtual_node=vn, aggr=aggr, lr=args.lr)
+                                            siamese=siamese, log_dir=log_dir, virtual_node=vn, aggr=aggr, lr=args.lr, p=args.p, 
+                                            log=True, finetune=finetune, edge_attr=train_edge_attr)
         loss_data.append({'modelname':modelname, 'loss':output[-1]})
 
     # Keep track of validation losses for each configuration
@@ -120,7 +132,8 @@ def main():
                             'vn' if vn else 'no-vn', 
                             aggr, 
                             args.loss,
-                            args.trial)
+                            args.trial,
+                            f'p-{args.p}')
     if not os.path.exists(csv_file):
         os.makedirs(csv_file)
     csv_file = csv_file + f'/{modeltype}.csv'

@@ -10,8 +10,7 @@ import os
 
 import argparse
 
-DATASET_INFO = {'norway': [10, False], 'phil': [3, True], 'holland': [1.524, True], 'la': [28.34, False]}
-
+DATASET_INFO = {'norway': [10, False], 'phil': [3, True], 'holland': [1.524, True]}
 
 class TerrainPatchesData(Data):
     def __inc__(self, key, value, *args, **kwargs):
@@ -43,19 +42,17 @@ def load_dem_data_(filename, imperial=False):
 
 # Get DEM array xloc and yloc
 def get_dem_xv_yv_(arr, resolution, visualize=True):
-    x_sz = arr.shape[0]
-    total_width_x = resolution * x_sz
-    y_sz = arr.shape[1]
-    total_width_y = resolution * y_sz
-    x = np.linspace(0, total_width_x, x_sz)
-    y = np.linspace(0, total_width_y, y_sz)
-    xv, yv = np.meshgrid(x, y, indexing='ij')
+    sz = arr.shape[0]
+    total_width = resolution * sz
+    x = np.linspace(0, total_width, sz)
+    y = np.linspace(0, total_width, sz)
+    xv, yv = np.meshgrid(x, y)
     if visualize == True:
-        plt.contourf(xv/1000, yv/1000, arr/1000, origin='upper')
-        print("minimum elevation:", np.min(arr/1000), "maximum elevation:", np.max(arr/1000))
+        plt.contourf(xv/1000, yv/1000, arr/1000)
+        print("minimal elevation:", np.min(arr/1000), "maximum elevation:", np.max(arr/1000))
         plt.axis("scaled")
         plt.colorbar()
-        plt.savefig('la-county-contour')
+        plt.show()
     return xv/1000, yv/1000, arr/1000
 
     
@@ -85,14 +82,14 @@ def construct_nx_graph(xv, yv, elevation):
         for j in range(0, elevation.shape[1]):
             idx1 = counts[i, j]
             G.add_node(idx1)
-            node_features.append(np.array([yv[i, j], xv[i, j], elevation[i, j]]))
+            node_features.append(np.array([xv[i, j], yv[i, j], elevation[i, j]]))
 
     for i in range(0, elevation.shape[0]):
         for j in range(0, elevation.shape[1]):
             neighbors = get_array_neighbors_(i, j, right=elevation.shape[0], bottom=elevation.shape[1])
             for n in neighbors:
-                p1 = np.array([yv[i, j], xv[i, j], elevation[i, j]])
-                p2 = np.array([yv[n[0], n[1]], xv[n[0], n[1]], elevation[n[0], n[1]]])
+                p1 = np.array([xv[i, j], yv[i, j], elevation[i, j]])
+                p2 = np.array([xv[n[0], n[1]], yv[n[0], n[1]], elevation[n[0], n[1]]])
                 w = np.linalg.norm(p1 - p2, ord=1)
                 idx2 = counts[n[0], n[1]]
                 idx1 = counts[i, j]
@@ -122,7 +119,8 @@ def get_edge_index(G):
 
     edges = [[], []]
 
-    for e in G.edges(data=True):
+    print("Formatting edge index.......")
+    for e in tqdm(G.edges(data=True)):
         edges[0].append(e[0])
         edges[1].append(e[1])
         edges[0].append(e[1])
@@ -132,58 +130,57 @@ def get_edge_index(G):
         weights.append(e[2]['weight'])
     return edges, weights
 
-def construct_patch_dataset(xv, yv, dem_array, patch_size, sz):
+# For each graph, sample n number of 
+def construct_patch_dataset(patches, patch_graphs, patch_features, per_graph=10):
     all_data = []
-    print("size of dataset:", sz, "patch sizes:", patch_size)
-    n = dem_array.shape[0]
-    m = dem_array.shape[1]
-    idxs = np.random.choice(n, [5,], replace=False)
-    idys = np.random.choice(m, [5,], replace=False)
-    for i in trange(sz):
-        xr = np.random.choice(idxs)
-        yr = np.random.choice(idys)
-        xv_patch = xv[xr: xr + patch_size, yr: yr+patch_size]
-        yv_patch = yv[xr: xr + patch_size, yr: yr+patch_size]
-        patch = dem_array[xr: xr + patch_size, yr: yr+patch_size]
-        graph, node_features = construct_nx_graph(xv_patch, yv_patch, patch)
-
-        edge_index, weights = get_edge_index(graph)
+    print(len(patches))
+    for patch in range(len(patches)):
+        nx_graph = patch_graphs[patch]
+        edge_index, weights = get_edge_index(patch_graphs[patch])
+        pf = torch.tensor(patch_features[patch])
+        edge_index = torch.tensor(edge_index)
+        weights = torch.tensor(weights)
+        for i in trange(per_graph):
+            src, tar = np.random.choice(len(patch_features[patch]), [2,], replace=False)
+            shortest_path = nx.shortest_path_length(nx_graph, src, tar, weight='weight')
+            data=TerrainPatchesData(x=pf, edge_index = edge_index, edge_attr=weights, src=src, tar=tar, length=shortest_path)
+            all_data.append(data)
         
-        src, tar = np.random.choice(len(node_features), [2, ], replace=False)
-        shortest_path = nx.shortest_path_length(graph, src, tar, weight='weight')
-        data=TerrainPatchesData(x=node_features, edge_index = edge_index, edge_attr=weights, src=src, tar=tar, length=shortest_path)
-        all_data.append(data)
-    centers = np.vstack((idxs, idys))
-    return all_data, centers
+    return all_data
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--name', type=str)
     parser.add_argument('--raw-data', type=str)
     parser.add_argument('--filename', type=str) # saves should be named `gr-{graph-resolution}-ps-{patch-size}-ol-{overlap}`
     parser.add_argument('--graph-resolution', type=int)
+    parser.add_argument('--per-graph', type=int)
     parser.add_argument('--patch-size', type=int)
-    parser.add_argument('--dataset-size', type=int)
+    parser.add_argument('--overlap', type=int)
 
     args = parser.parse_args()
 
-    dem_res = DATASET_INFO[args.name][0]
-    imperial = DATASET_INFO[args.name][1]
-
-    if args.name == 'la':
-        dem_array = np.load(args.raw_data)
-    else:
-        dem_array = load_dem_data_(args.raw_data, imperial)
-
+    if 'norway' in args.raw_data:
+        dem_res = DATASET_INFO['norway'][0]
+        imperial = DATASET_INFO['norway'][1]
+    elif 'holland' in args.raw_data:
+        dem_res = DATASET_INFO['holland'][0]
+        imperial = DATASET_INFO['holland'][1]
+    elif 'phil' in args.raw_data:
+        dem_res = DATASET_INFO['phil'][0]
+        imperial = DATASET_INFO['phil'][1]
+    
+    dem_array = load_dem_data_(args.raw_data, imperial)
     xv, yv, elevations = get_dem_xv_yv_(dem_array, dem_res)
     xv = xv[::args.graph_resolution, ::args.graph_resolution]
     yv = yv[::args.graph_resolution, ::args.graph_resolution]
     elevations = elevations[::args.graph_resolution, ::args.graph_resolution]
     print("DEM array shape", elevations.shape)
 
-    all_data, centers = construct_patch_dataset(xv, yv, elevations, args.patch_size, args.dataset_size)
+    patches, patch_graphs, patch_features = get_patches_(xv, yv, elevations,args.patch_size, args.overlap)
+    all_data = construct_patch_dataset(patches, patch_graphs, patch_features, args.per_graph)
     torch.save(all_data, args.filename+'.pt')
-    torch.save(centers, args.filename + '-centers.pt')
+    print("Number of patches:", len(patch_graphs))
+    print("Number of samples:", args.per_graph * len(patch_graphs))
 
 if __name__ == '__main__':
     main()

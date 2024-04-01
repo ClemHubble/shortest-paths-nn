@@ -27,6 +27,7 @@ echo "Siamese? $siamese"
 echo "VN? $vn"
 echo "layer type: $layer_type"
 echo "Aggr: $aggr"
+echo "p= $p"
 
 python train_single_dataset.py --train-data $train_data \
 --test-data $test_data \
@@ -39,4 +40,6 @@ python train_single_dataset.py --train-data $train_data \
 --vn $vn \
 --layer-type $layer_type \
 --aggr $aggr \
+--p $p \
+--finetune $finetune \
 --trial $2
