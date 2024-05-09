@@ -29,7 +29,7 @@ echo "layer type: $layer_type"
 echo "Aggr: $aggr"
 echo "p= $p"
 
-python train_single_dataset.py --train-data $train_data \
+python train_single_dataset_coarse_to_refined.py --train-data $train_data \
 --test-data $test_data \
 --epochs $epochs\
  --device $device \
@@ -41,6 +41,5 @@ python train_single_dataset.py --train-data $train_data \
 --layer-type $layer_type \
 --aggr $aggr \
 --p $p \
---finetune $finetune \
 --include-edge-attr $include_edge_attr \
 --trial $2

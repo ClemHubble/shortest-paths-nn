@@ -1,9 +1,0 @@
-train_data: norway/norway-1600-train.npz
-test_data: norway/norway-1600-test.npz
-epochs: 500
-device: cuda:6
-batch_size: 128
-dataset_name: norway-1600
-config: configs/hyperparameter-config-GAT.yaml
-siamese: 0
-vn: 0

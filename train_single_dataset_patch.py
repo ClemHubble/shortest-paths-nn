@@ -74,6 +74,7 @@ def main():
     parser.add_argument('--layer-type', type=str)
     parser.add_argument('--trial', type=str)
     parser.add_argument('--finetune', type=int, default=0)
+    parser.add_argument('--include-edge-attr', type=int, default=0)
 
     args = parser.parse_args()
     siamese = True if args.siamese == 1 else False

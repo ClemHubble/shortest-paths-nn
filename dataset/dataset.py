@@ -47,7 +47,8 @@ def get_dem_xv_yv_(arr, resolution, visualize=True):
         plt.axis("scaled")
         plt.colorbar()
         plt.show()
-    return xv/1000, yv/1000, arr/1000
+    return xv, yv, arr
+    #return xv/1000, yv/1000, arr/1000
 
     
 # Construct grid
@@ -68,6 +69,7 @@ def construct_nx_graph(xv, yv, elevation, triangles=False, p=2):
     
     n = elevation.shape[0]
     m = elevation.shape[1]
+    print("shape", n, m)
     counts = np.reshape(np.arange(0, n*m), (n, m))
     G = nx.Graph()
 
@@ -181,12 +183,18 @@ def main():
     else:
         dem_array = load_dem_data_(args.raw_data, imperial)
     xv, yv, elevations = get_dem_xv_yv_(dem_array, dem_res)
+    #row,col = np.random.choice(elevations.shape[0], size=[2,])
+    # row = 122 
+    # col = 1647
+    # xv = xv[row:row+ 100, col:col+100]
+    # yv = yv[row:row+100, col:col+100]
+    # elevations = elevations[row:row+100, col:col+100]
     xv = xv[::args.graph_resolution, ::args.graph_resolution]
     yv = yv[::args.graph_resolution, ::args.graph_resolution]
     elevations = elevations[::args.graph_resolution, ::args.graph_resolution]
     print('terrain shape:', elevations.shape)
 
-    G, node_features = construct_nx_graph(xv, yv, elevations, triangles=args.triangles, )
+    G, node_features = construct_nx_graph(xv, yv, elevations, triangles=args.triangles)
 
     construct_pyg_dataset(G, 
                           node_features, 

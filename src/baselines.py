@@ -115,20 +115,25 @@ class GINLayer(nn.Module):
         return output
 
 class GeneralConvMaxAttention(nn.Module):
-    def __init__(self, input=3, output=3):
+    def __init__(self, input=3, output=3, edge_dim=None):
         super(GeneralConvMaxAttention, self).__init__()
         self.layer = GeneralConv(in_channels=input, 
                                 out_channels=output,
-                                aggr='max', 
+                                aggr='max',
+                                in_edge_channels=edge_dim,
                                 attention=True,
                                 l2_normalize=False)
         
-    def forward(self, x, edge_index):
-        output = self.layer(x, edge_index)
+        
+    def forward(self, x, edge_index, edge_attr=None):
+        general_conv_edge_attr = None
+        if edge_attr != None:
+            general_conv_edge_attr = edge_attr.unsqueeze(-1)
+        output = self.layer(x, edge_index, edge_attr=general_conv_edge_attr)
         return output
 
 class GeneralConvMultiAttention(nn.Module):
-    def __init__(self, input=3, output=3):
+    def __init__(self, input=3, output=3, edge_dim=None):
         super(GeneralConvMultiAttention, self).__init__()
         self.aggregation = aggr.MultiAggregation(['mean', 'max', 'sum', 'min'])
         self.layer = GeneralConv(in_channels=input, 
@@ -141,20 +146,19 @@ class GeneralConvMultiAttention(nn.Module):
         return output
 
 
+
 class CNNLayer(nn.Module):
-    def __init__(self, input=3, output=20, **kwargs):
+    def __init__(self, input=3, output=20, sz=25, **kwargs):
         super(CNNLayer, self).__init__()
         self.layer = nn.Conv2d(in_channels=input, 
                                  out_channels=output, 
                                  kernel_size=1)
+        self.size = sz
+        self.in_channels = input
+
+        self.out_channels = output
     
-    def forward(self, x, edge_index, batch=None):
-        if batch == None and len(x.size()) < 3:
-            side_length = int(torch.square(x.size()[0]).item())
-            x = torch.reshape(x, (1, side_length, side_length, 3))
-        elif len(x.size()) < 3:
-            side_length = int(torch.square(x.size()[0]).item())
-            x = torch.reshape(x, (batch, side_length, side_length, 3))
+    def forward(self, x, edge_index, edge_attr=None, batch=None):
         output = self.layer(x)
         return output
 
@@ -165,15 +169,15 @@ can work in this case because of how the terrain data is structured.
 """
 class GNNModel1(nn.Module):
     def __init__(self, input=3, output=20, hidden=20, layers=2, 
-                 layer_type='GATConv', activation='LeakyReLU', **kwargs):
+                 layer_type='GATConv', activation='LeakyReLU', size=25, **kwargs):
         super(GNNModel1, self).__init__()
         torch.manual_seed(1234567)
         # Initialize the first layer
         graph_layer = globals()[layer_type]
-        self.initial = graph_layer(input, hidden)
+        self.initial = graph_layer(input, hidden, size=size)
         
         # Initialize the subsequent layers
-        self.module_list = nn.ModuleList([graph_layer(hidden, hidden) for _ in range(layers - 1)])
+        self.module_list = nn.ModuleList([graph_layer(hidden, hidden, size=size) for _ in range(layers - 1)])
         
         # Output layer
         self.output = graph_layer(hidden, output)
@@ -194,7 +198,7 @@ class GNNModel1(nn.Module):
 
 '''
 
-New and improved versionof graph neural network with a linear output layer. 
+New and improved version of graph neural network with a linear output layer. 
 
 '''  
 class GNNModel(nn.Module):
@@ -211,7 +215,45 @@ class GNNModel(nn.Module):
         self.module_list = nn.ModuleList([graph_layer(hidden, hidden, edge_dim=edge_dim) for _ in range(layers - 1)])
         
         # Output layer
-        self.output = nn.Linear(hidden, output, edge_dim)
+        self.output = nn.Linear(hidden, output)
+        #self.output = graph_layer(hidden, output)
+
+        # activation function
+        self.activation = globals()[activation]()
+
+        self.layer_type = layer_type
+        self.hidden_channels = hidden
+
+    def forward(self, x, edge_index, edge_attr=None, batch=None):
+        # x = data.x
+        # edge_index = data.edge_index
+
+        x = self.initial(x, edge_index, edge_attr=edge_attr)
+        x = self.activation(x)
+        for layer in self.module_list:
+            x = layer(x, edge_index, edge_attr=edge_attr)
+            x = self.activation(x)
+        if self.layer_type=='CNNLayer':
+            num_nodes = x.size()[2]**2
+            
+            x = x.reshape(1, self.hidden_channels, num_nodes).squeeze().T
+        x = self.output(x)
+        return x
+    
+class GNNModel2(nn.Module):
+    def __init__(self, input=3, output=20, hidden=20, layers=2, 
+                 layer_type='GATConv', activation='LeakyReLU', **kwargs):
+        super(GNNModel2, self).__init__()
+
+        # Initialize the first layer
+        graph_layer = globals()[layer_type]
+        self.initial = graph_layer(input, hidden)
+        
+        # Initialize the subsequent layers
+        self.module_list = nn.ModuleList([graph_layer(hidden, hidden) for _ in range(layers - 1)])
+        
+        # Output layer
+        self.output = nn.Linear(hidden, output)
         #self.output = graph_layer(hidden, output)
 
         # activation function
@@ -219,7 +261,7 @@ class GNNModel(nn.Module):
 
         self.layer_type = layer_type
 
-    def forward(self, x, edge_index, edge_attr=None, batch=None):
+    def forward(self, x, edge_index, batch=None):
         # x = data.x
         # edge_index = data.edge_index
 
@@ -303,7 +345,7 @@ class GNN_VN_Model(torch.nn.Module):
         self.initial = graph_layer(input, hidden, edge_dim=edge_dim)
         
         # Initialize the subsequent layers
-        self.module_list = nn.ModuleList([graph_layer(hidden, hidden, edge_dim) for _ in range(layers - 1)])
+        self.module_list = nn.ModuleList([graph_layer(hidden, hidden, edge_dim=edge_dim) for _ in range(layers - 1)])
         
         # Output layer
         self.output = torch.nn.Linear(hidden, output)

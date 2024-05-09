@@ -131,18 +131,31 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
                                  device='cuda:0', log_dir='/data/sam',
                                  lr=0.001, siamese=True, save_freq=50, virtual_node=False, 
                                  aggr='sum', patch=False, metadata=None, p=1, hierarchical_vn_params=None,
-                                 log=True, finetune=False, edge_attr = None):
+                                 log=True, finetune=False, edge_attr = None, finetune_file=None):
     
     # initiate summary writer
     
     gnn_config = model_config['gnn']
     if not patch:
-        graph_data = Data(x=node_features, edge_index=edge_index)
+        edge_attr = torch.tensor(edge_attr) if edge_attr is not None else None
+        graph_data = Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr)
         if log:
-            test_graph = Data(x=test_node_features, edge_index=test_edge_index)
+            test_graph = Data(x=test_node_features, edge_index=test_edge_index, edge_attr=edge_attr)
+    
+    # set edge dimensions
+    print(type(graph_data.edge_attr))
+    cnn_sz = int(np.sqrt(len(node_features)))
+
+    if layer_type=='CNNLayer':
+        feats = graph_data.x.numpy()
+        total_num_nodes = len(feats)
+        cnn_img =  feats.T.reshape(3, -1, total_num_nodes).swapaxes(0, 1).reshape(1, 3, cnn_sz, cnn_sz)
+        cnn_in = torch.tensor(cnn_img, device=device)
+    
+    edge_dim = 1 if isinstance(graph_data.edge_attr, torch.Tensor) else 0
     # Add virtual node
     if virtual_node:
-        gnn_model = GNN_VN_Model(batches=patch, layer_type=layer_type, **gnn_config)
+        gnn_model = GNN_VN_Model(batches=patch, layer_type=layer_type, edge_dim=edge_dim, **gnn_config)
     elif hierarchical_vn_params != None:
         gnn_model = GNN_VN_Hierarchical(layer_type=layer_type, **gnn_config)
 
@@ -153,7 +166,6 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
         hblocks = None
         hnum = None
         hlayers = 0
-
     # GCN2Conv 
     elif layer_type == 'GCN2Conv':
         gnn_model = GCN2Model(**gnn_config)
@@ -174,7 +186,7 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
         gnn_model = initialize_mlp(**deepsets_config)
     else:
         print("Train vanilla GNN")
-        gnn_model = GNNModel(layer_type=layer_type, **gnn_config)
+        gnn_model = GNNModel(layer_type=layer_type, edge_dim=edge_dim, size=cnn_sz, **gnn_config)
     
     print("Sending model to GPU.....")
     gnn_model = gnn_model.to(torch.double)
@@ -183,6 +195,7 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
     mlp=None
     if siamese:
         parameters = gnn_model.parameters()
+        
     else:
         mlp_config = model_config['mlp']
         if aggr == 'combine':
@@ -194,12 +207,16 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
         mlp.to(device)
 
         parameters = list(gnn_model.parameters()) + list(mlp.parameters())
+        
     
     
     # if we finetune the model, we freeze the siamese layer and just train the MLP
     if finetune:
         # load previous model from log
+        
         prev_model_pth = os.path.join(log_dir, 'final_model.pt')
+
+        print("finetuning from file:", prev_model_pth)
         model_info = torch.load(prev_model_pth, map_location=device)
         if mlp:
             mlp_parameters = model_info['mlp_state_dict']
@@ -207,24 +224,21 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
             
             mlp.load_state_dict(mlp_parameters)
             gnn_model.load_state_dict(gnn_parameters)
+            #parameters = list(gnn_model.parameters()) + list(mlp.parameters())
 
         else:
             gnn_model.load_state_dict(model_info)
-            mlp_config = model_config['mlp']
-            if aggr == 'combine':
-                mlp_config['input'] = mlp_config['input'] * 3
-            mlp_nn = initialize_mlp(**mlp_config, activation='lrelu')
-            mlp = MLPBaseline1(mlp_nn, aggr=aggr)
-            mlp.init_weights()
-            mlp = mlp.to(torch.double)
-            mlp.to(device)
+            #parameters = gnn_model.parameters()
+        if finetune_file is not None:
+            log_dir = finetune_file
+        else:
+            log_dir = os.path.join(log_dir, 'finetune/')
         
-        log_dir = os.path.join(log_dir, 'finetune/')
         
-        parameters = mlp.parameters()
-        for param in gnn_model.parameters():
-            param.requires_grad =False
-        siamese = False
+        # parameters = mlp.parameters()
+        # for param in gnn_model.parameters():
+        #     param.requires_grad =False
+        # siamese = False
     record_dir = os.path.join(log_dir, 'record/')
 
     optimizer = AdamW(parameters, lr=lr)
@@ -243,6 +257,7 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
     logging.info(f'MLP aggregation: {aggr}')
     logging.info(f'Siamese? {siamese}')
     logging.info(f'loss function: {loss_func}')
+    logging.info(f'edge attributes?: {edge_attr != None}')
 
     logging.info(gnn_model)
     logging.info(mlp)
@@ -254,8 +269,8 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
         batch_count = 0
         for batch in train_dataloader:
             optimizer.zero_grad()
-            # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
-            #     with record_function('model_inferece'):
+                # print(gnn_model(cnn_in, edge_index=None).size())
+                # h()
             if patch:
                 batch.to(device)
             else:
@@ -268,7 +283,7 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
             # edge_index = edge_index.to(device)
             if layer_type == 'GCN2Conv' or virtual_node:
                 # node_embeddings = gnn_model(graph_data)
-                node_embeddings = gnn_model(batch.x , batch.edge_index, batch=batch) if patch else gnn_model(graph_data.x, graph_data.edge_index)
+                node_embeddings = gnn_model(batch.x , batch.edge_index, edge_attr=batch.edge_attr, batch=batch) if patch else gnn_model(graph_data.x, graph_data.edge_index, edge_attr = graph_data.edge_attr)
             elif layer_type == 'MLP':
                 # node_embeddings = gnn_model(graph_data.x)
                 node_embeddings = gnn_model(batch.x) if patch else gnn_model(graph_data.x)
@@ -276,9 +291,11 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
                 if patch:
                     raise Exception("Not supported for patch datasets")
                 node_embeddings = gnn_model(graph_data.x, graph_data.edge_index, hblocks, 1, hnum)
+            elif layer_type=='CNNLayer':
+                node_embeddings = gnn_model(cnn_in, edge_index = None)
             else:
                 # node_embeddings = gnn_model(graph_data.x, graph_data.edge_index)
-                node_embeddings = gnn_model(batch.x, batch.edge_index) if patch else gnn_model(graph_data.x, graph_data.edge_index)
+                node_embeddings = gnn_model(batch.x, batch.edge_index, edge_attr=batch.edge_attr) if patch else gnn_model(graph_data.x, graph_data.edge_index, edge_attr = graph_data.edge_attr)
 
             if siamese:
                 # pred = torch.norm(node_embeddings[srcs] - node_embeddings[tars], p=1, dim=1)
@@ -293,8 +310,7 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
             batch_count += 1
             loss.backward()
             optimizer.step()
-                # print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
-                # h()
+
         if log:
             if not patch:
                 test_graph = test_graph.to(device)
@@ -309,6 +325,9 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
                 elif isinstance(gnn_model, GNN_VN_Hierarchical):
                     test_node_embeddings = gnn_model(test_graph.x, test_graph.edge_index, hblocks, 1, hnum)
                     train_node_embeddings = gnn_model(graph_data.x, graph_data.edge_index, hblocks, 1, hnum)
+                elif layer_type == 'CNNLayer':
+                    test_node_embeddings = gnn_model(cnn_in, edge_index = None)
+                    train_node_embeddings = gnn_model(cnn_in, edge_index = None)
                 else:
                     test_node_embeddings = gnn_model(test_graph.x, test_graph.edge_index)
                     train_node_embeddings = gnn_model(graph_data.x, graph_data.edge_index)
