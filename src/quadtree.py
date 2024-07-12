@@ -5,7 +5,7 @@ Hierarchical tree algorithm for approximating shortest paths on Terrain grid gra
 import numpy as np
 import networkx as nx
 from treelib import Tree, Node
-
+from tqdm import tqdm, trange
 
 def build_dem_qt_(array, lb, rb, ub, db, tree, parent, thresh=0.10):
     
@@ -23,7 +23,7 @@ def build_dem_qt_(array, lb, rb, ub, db, tree, parent, thresh=0.10):
     # base case: 
     if array.shape[0] * array.shape[1] <=1:
         return array
-    if abs(np.min(array) - np.max(array)) < thresh:
+    if abs(np.min(array) - np.max(array)) <= thresh:
         return array
 
     q1 = array[:mid_row, :mid_col]
@@ -34,12 +34,13 @@ def build_dem_qt_(array, lb, rb, ub, db, tree, parent, thresh=0.10):
 
     # if any of the quadrants have too large of a difference between min and max
     # split it again along some midpoint
-    build_dem_qt_(q1, lb, lb + mid_row, ub, ub + mid_col, tree, node_id)
-    build_dem_qt_(q2, lb + mid_row, rb, ub, ub + mid_col, tree, node_id)
-    build_dem_qt_(q3, lb + mid_row, rb, ub + mid_col, db, tree, node_id)
-    build_dem_qt_(q4, lb, lb + mid_row, ub + mid_col, db, tree, node_id)
+    build_dem_qt_(q1, lb, lb + mid_row, ub, ub + mid_col, tree, node_id, thresh=thresh)
+    build_dem_qt_(q2, lb + mid_row, rb, ub, ub + mid_col, tree, node_id, thresh=thresh)
+    build_dem_qt_(q3, lb + mid_row, rb, ub + mid_col, db, tree, node_id, thresh=thresh)
+    build_dem_qt_(q4, lb, lb + mid_row, ub + mid_col, db, tree, node_id, thresh=thresh)
     
-
+# parameters: array, threshhold value
+# return: treelib.Tree object
 def build_quadtree(array, thresh=0.10):
     tree = Tree()
     build_dem_qt_(array, 0, array.shape[0], 0, array.shape[1], tree, None, thresh=thresh)
@@ -56,8 +57,9 @@ def quadtree_simplification(tree, num_rows, num_cols):
         if node.is_leaf():
             lb, rb, ub, db = node.data
             leaf_list.append((node, abs(rb - lb)*abs(ub - db)))
-    
-    for val in leaf_list:
+    print("loading quadtree simplification of terrain.....")
+
+    for val in tqdm(leaf_list):
         
         lb, rb, ub, db = val[0].data
         rb = rb if rb < num_rows else num_rows - 1
@@ -72,7 +74,7 @@ def quadtree_simplification(tree, num_rows, num_cols):
             graph.add_edge(v1, v2)        
     
     ## prune extraneous edges:
-    for edge in graph.edges:
+    for edge in tqdm(graph.edges):
         idx1 = min(edge)
         idx2 = max(edge)
 
@@ -94,6 +96,4 @@ def quadtree_simplification(tree, num_rows, num_cols):
                 graph.remove_edge(edge[0], edge[1])
         
     return graph
-
-
 

@@ -74,29 +74,55 @@ def get_array_neighbors_(x, y, left=0, right=500, top=0, bottom=500, radius=1):
 
 
 # External use ok
-def construct_nx_graph(xv, yv, elevation):
-    sz = elevation.shape[0]
-    counts = np.reshape(np.arange(0, elevation.shape[0]*elevation.shape[1]), (elevation.shape[0], elevation.shape[1]))
+def construct_nx_graph(xv, yv, elevation, triangles=False, p=2, scale=False):
+    
+    n = elevation.shape[0]
+    m = elevation.shape[1]
+    counts = np.reshape(np.arange(0, n*m), (n, m))
     G = nx.Graph()
 
     node_features = []
-
-    for i in range(0, elevation.shape[0]):
-        for j in range(0, elevation.shape[1]):
+    #fig = plt.figure()
+    #ax = fig.add_subplot(projection='3d')
+    for i in range(0, n):
+        for j in range(0, m):
             idx1 = counts[i, j]
             G.add_node(idx1)
-            node_features.append(np.array([yv[i, j], xv[i, j], elevation[i, j]]))
+            node_features.append(np.array([xv[i, j], yv[i, j], elevation[i, j]]))
+            neighbors = get_array_neighbors_(i, j, right=elevation.shape[0], bottom=elevation.shape[1], radius=1)
+            for neighbor in neighbors:
+                p1 = np.array([xv[i, j], yv[i, j], elevation[i, j]])
 
-    for i in range(0, elevation.shape[0]):
-        for j in range(0, elevation.shape[1]):
-            neighbors = get_array_neighbors_(i, j, right=elevation.shape[0], bottom=elevation.shape[1])
-            for n in neighbors:
-                p1 = np.array([yv[i, j], xv[i, j], elevation[i, j]])
-                p2 = np.array([yv[n[0], n[1]], xv[n[0], n[1]], elevation[n[0], n[1]]])
-                w = np.linalg.norm(p1 - p2, ord=1)
-                idx2 = counts[n[0], n[1]]
-                idx1 = counts[i, j]
+                p2 = np.array([xv[neighbor[0], neighbor[1]], yv[neighbor[0], neighbor[1]], elevation[neighbor[0], neighbor[1]]])
+                if scale:
+                    slope = (abs(p1[2] - p2[2]))/(abs(p1[0] - p2[0]) + abs(p1[1] - p2[1]))
+                    # w = np.log(1 + slope)
+                    deg_angle = np.arctan(slope) * (180/np.pi)
+                    w = np.power(deg_angle, 1.2)
+                else:
+                    w = np.linalg.norm(p1 - p2, ord=p)
+                #ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], color='black')
+                idx2 = counts[neighbor[0], neighbor[1]]
                 G.add_edge(idx1, idx2, weight=w)
+    if triangles:
+        for i in range(0, n - 1):
+            for j in range(0, m - 1):
+                # index cell by top left coordinate
+                triangle_edge = [(counts[i, j], counts[i + 1, j + 1]), (counts[i + 1, j], counts[i, j + 1])]
+                edge = triangle_edge[np.random.choice(2)]
+                for edge in triangle_edge:
+                    p1 = node_features[edge[0]]
+                    p2 = node_features[edge[1]]
+                    if scale:
+                        slope = (abs(p1[2] - p2[2]))/(abs(p1[0] - p2[0]) + abs(p1[1] - p2[1]))
+                        # w = np.log(1 + slope)
+                        deg_angle = np.arctan(slope) * (180/np.pi)
+                        w = np.power(deg_angle, 1.2)
+                    else:
+                        w = np.linalg.norm(p1 - p2, ord=p)
+                #ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], color='black')
+                    G.add_edge(edge[0], edge[1], weight=w)
+    #fig.savefig('../images/norway-250.png')
     return G, node_features
 
 def get_patches_(xv, yv, dem_array, patch_size, overlap):
@@ -132,29 +158,65 @@ def get_edge_index(G):
         weights.append(e[2]['weight'])
     return edges, weights
 
-def construct_patch_dataset(xv, yv, dem_array, patch_size, sz):
+def construct_patch_dataset(xv, yv, dem_array, patch_size, sz, triangles=False, scale=False):
     all_data = []
     print("size of dataset:", sz, "patch sizes:", patch_size)
     n = dem_array.shape[0]
     m = dem_array.shape[1]
-    idxs = np.random.choice(n, [5,], replace=False)
-    idys = np.random.choice(m, [5,], replace=False)
-    for i in trange(sz):
-        xr = np.random.choice(idxs)
-        yr = np.random.choice(idys)
+    cx = np.random.choice(n-patch_size, size=5, replace=False)
+    cy = np.random.choice(m - patch_size, size=5, replace=False)
+    for i in range(5):
+        xr = cx[i]
+        yr = cy[i]
         xv_patch = xv[xr: xr + patch_size, yr: yr+patch_size]
         yv_patch = yv[xr: xr + patch_size, yr: yr+patch_size]
         patch = dem_array[xr: xr + patch_size, yr: yr+patch_size]
-        graph, node_features = construct_nx_graph(xv_patch, yv_patch, patch)
+        graph, node_features = construct_nx_graph(xv_patch, 
+                                                  yv_patch, 
+                                                  patch, 
+                                                  triangles=triangles, 
+                                                  scale=scale)
 
         edge_index, weights = get_edge_index(graph)
+        for m in range(patch_size * patch_size):
+            for n in range(i + 1, patch_size * patch_size):
+                shortest_path = nx.shortest_path_length(graph, m, n, weight='weight')
+                data=TerrainPatchesData(x=node_features, 
+                                        edge_index = edge_index, 
+                                        edge_attr=weights, 
+                                        src=m, 
+                                        tar=n, 
+                                        length=shortest_path)
+                all_data.append(data)
+
+    # for i in trange(sz):
+    #     c = np.random.randint(low = 0, high=5)
+    #     #c = 0
+    #     xr = cx[c]
+    #     yr = cy[c]
+    #     xv_patch = xv[xr: xr + patch_size, yr: yr+patch_size]
+    #     yv_patch = yv[xr: xr + patch_size, yr: yr+patch_size]
+    #     patch = dem_array[xr: xr + patch_size, yr: yr+patch_size]
+    #     graph, node_features = construct_nx_graph(xv_patch, 
+    #                                               yv_patch, 
+    #                                               patch, 
+    #                                               triangles=triangles, 
+    #                                               scale=scale)
+
+    #     edge_index, weights = get_edge_index(graph)
         
-        src, tar = np.random.choice(len(node_features), [2, ], replace=False)
-        shortest_path = nx.shortest_path_length(graph, src, tar, weight='weight')
-        data=TerrainPatchesData(x=node_features, edge_index = edge_index, edge_attr=weights, src=src, tar=tar, length=shortest_path)
-        all_data.append(data)
-    centers = np.vstack((idxs, idys))
-    return all_data, centers
+    #     src, tar = np.random.choice(len(node_features), [2, ], replace=False)
+    #     if src == tar:
+    #         continue
+    #     shortest_path = nx.shortest_path_length(graph, src, tar, weight='weight')
+    #     data=TerrainPatchesData(x=node_features, 
+    #                             edge_index = edge_index, 
+    #                             edge_attr=weights, 
+    #                             src=src, 
+    #                             tar=tar, 
+    #                             length=shortest_path)
+    #     all_data.append(data)
+    return all_data, np.hstack((cx, cy))
 
 def main():
     parser = argparse.ArgumentParser()
@@ -164,6 +226,8 @@ def main():
     parser.add_argument('--graph-resolution', type=int)
     parser.add_argument('--patch-size', type=int)
     parser.add_argument('--dataset-size', type=int)
+    parser.add_argument('--triangles', action='store_true')
+    parser.add_argument('--scale', action='store_true')
 
     args = parser.parse_args()
 
@@ -176,12 +240,19 @@ def main():
         dem_array = load_dem_data_(args.raw_data, imperial)
 
     xv, yv, elevations = get_dem_xv_yv_(dem_array, dem_res)
-    xv = xv[::args.graph_resolution, ::args.graph_resolution]
-    yv = yv[::args.graph_resolution, ::args.graph_resolution]
-    elevations = elevations[::args.graph_resolution, ::args.graph_resolution]
+    print('total elevation shape:', elevations.shape)
+    xv = xv[::args.graph_resolution, :2000:args.graph_resolution]
+    yv = yv[::args.graph_resolution, :2000:args.graph_resolution]
+    elevations = elevations[::args.graph_resolution, :2000:args.graph_resolution]
     print("DEM array shape", elevations.shape)
 
-    all_data, centers = construct_patch_dataset(xv, yv, elevations, args.patch_size, args.dataset_size)
+    all_data, centers = construct_patch_dataset(xv, 
+                                                yv, 
+                                                elevations, 
+                                                args.patch_size, 
+                                                args.dataset_size,
+                                                triangles=args.triangles, 
+                                                scale=args.scale)
     torch.save(all_data, args.filename+'.pt')
     torch.save(centers, args.filename + '-centers.pt')
 

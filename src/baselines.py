@@ -89,7 +89,7 @@ class MLPBaseline1(nn.Module):
                 torch.nn.init.normal_(m.weight, std=0.01)
                 torch.nn.init.normal_(m.bias, std=0.01)
     
-    def forward(self, input1, input2):
+    def forward(self, input1, input2, vn_emb=None, batch=False):
         if self.aggr == 'max':
             embd = torch.max(input1, input2)
         elif self.aggr== 'sum':
@@ -98,7 +98,16 @@ class MLPBaseline1(nn.Module):
             embd = torch.min(input1, input2)
         elif self.aggr == 'combine':
             embd = torch.hstack((input1 + input2, torch.max(input1, input2), torch.min(input1, input2)))
- 
+        elif self.aggr == 'concat':
+            embd = torch.hstack((input1, input2, torch.unsqueeze(torch.norm(input1 - input2, p=1, dim=1), dim=1)))
+        elif self.aggr == 'sum+diff':
+            embd = torch.hstack((input1 + input2, torch.abs(input1 - input2)))
+        elif self.aggr == 'sum+diff+vn' and batch:
+            embd = torch.hstack((input1 + input2, torch.abs(input1 - input2), vn_emb))
+        elif self.aggr == 'sum+diff+vn':
+            embd = torch.hstack((input1 + input2, torch.abs(input1 - input2), vn_emb.repeat(input1.size()[0], 1)))
+        elif self.aggr == 'diff':
+            embd = torch.abs(input1- input2)
         return self.mlp(embd)
 
 
@@ -132,21 +141,42 @@ class GeneralConvMaxAttention(nn.Module):
         output = self.layer(x, edge_index, edge_attr=general_conv_edge_attr)
         return output
 
+class GeneralConvMinAttention(nn.Module):
+    def __init__(self, input=3, output=3, edge_dim=None):
+        super(GeneralConvMinAttention, self).__init__()
+        self.aggregation = aggr.MultiAggregation([ 'min'])
+        self.layer = GeneralConv(in_channels=input, 
+                                 out_channels=output, 
+                                 aggr='min', 
+                                 in_edge_channels=edge_dim,
+                                 attention=True, 
+                                 l2_normalize=False)
+    
+    def forward(self, x, edge_index, edge_attr=None):
+        general_conv_edge_attr = None
+        if edge_attr != None:
+            general_conv_edge_attr = edge_attr.unsqueeze(-1)
+        output = self.layer(x, edge_index, edge_attr=general_conv_edge_attr)
+        return output
+
 class GeneralConvMultiAttention(nn.Module):
     def __init__(self, input=3, output=3, edge_dim=None):
         super(GeneralConvMultiAttention, self).__init__()
         self.aggregation = aggr.MultiAggregation(['mean', 'max', 'sum', 'min'])
         self.layer = GeneralConv(in_channels=input, 
                                  out_channels=output, 
-                                 aggr=self.aggregation, 
+                                 aggr='min', 
+                                 in_edge_channels=edge_dim,
                                  attention=True, 
                                  l2_normalize=False)
-    def forward(self, x, edge_index):
-        output = self.layer(x, edge_index)
+    
+    def forward(self, x, edge_index, edge_attr=None):
+        general_conv_edge_attr = None
+        if edge_attr != None:
+            general_conv_edge_attr = edge_attr.unsqueeze(-1)
+        output = self.layer(x, edge_index, edge_attr=general_conv_edge_attr)
         return output
-
-
-
+    
 class CNNLayer(nn.Module):
     def __init__(self, input=3, output=20, sz=25, **kwargs):
         super(CNNLayer, self).__init__()
@@ -234,23 +264,25 @@ class GNNModel(nn.Module):
             x = layer(x, edge_index, edge_attr=edge_attr)
             x = self.activation(x)
         if self.layer_type=='CNNLayer':
-            num_nodes = x.size()[2]**2
-            
-            x = x.reshape(1, self.hidden_channels, num_nodes).squeeze().T
+            num_nodes = x.size()[2]**2 if batch == None else x.size()[0] * x.size()[2] * x.size()[3]
+            cnn_bsz = 1 if batch == None else batch
+            #x = x.reshape(cnn_bsz, self.hidden_channels, num_nodes).squeeze().T
+            x = x.flatten(start_dim=2, end_dim=3).mT.flatten(start_dim=0, end_dim=1)
         x = self.output(x)
         return x
     
-class GNNModel2(nn.Module):
-    def __init__(self, input=3, output=20, hidden=20, layers=2, 
-                 layer_type='GATConv', activation='LeakyReLU', **kwargs):
-        super(GNNModel2, self).__init__()
 
+class CNN_Final_VN_Model(torch.nn.Module):
+    def __init__(self, input=3, output=20, hidden=20, layers=2, 
+                    layer_type='GATConv', activation='LeakyReLU', batches=False, 
+                    edge_dim=None, **kwargs):
+        super(CNN_Final_VN_Model, self).__init__()
         # Initialize the first layer
         graph_layer = globals()[layer_type]
-        self.initial = graph_layer(input, hidden)
+        self.initial = graph_layer(input, hidden, edge_dim=edge_dim)
         
         # Initialize the subsequent layers
-        self.module_list = nn.ModuleList([graph_layer(hidden, hidden) for _ in range(layers - 1)])
+        self.module_list = nn.ModuleList([graph_layer(hidden, hidden, edge_dim=edge_dim) for _ in range(layers - 1)])
         
         # Output layer
         self.output = nn.Linear(hidden, output)
@@ -260,8 +292,25 @@ class GNNModel2(nn.Module):
         self.activation = globals()[activation]()
 
         self.layer_type = layer_type
+        self.hidden_channels = hidden
 
-    def forward(self, x, edge_index, batch=None):
+        self.virtualnode_embedding = torch.nn.Embedding(1, hidden)
+        self.mlp_virtualnode_list = torch.nn.ModuleList()
+        torch.nn.init.constant_(self.virtualnode_embedding.weight.data, 0)
+        for layer in range(layers  - 2):
+            if batches:
+                self.mlp_virtualnode_list.append(
+                    torch.nn.Sequential(torch.nn.Linear(hidden, hidden), torch.nn.BatchNorm1d(hidden), torch.nn.LeakyReLU(), \
+                                        torch.nn.Linear(hidden, hidden), torch.nn.BatchNorm1d(hidden), torch.nn.LeakyReLU()))
+            else:
+                self.mlp_virtualnode_list.append(
+                    torch.nn.Sequential(torch.nn.Linear(hidden, hidden), torch.nn.ReLU(), \
+                                        torch.nn.Linear(hidden, hidden), torch.nn.ReLU()))
+        self.mlp_virtualnode_list.append(torch.nn.Sequential(torch.nn.Linear(hidden, hidden), torch.nn.ReLU(), \
+                                        torch.nn.Linear(hidden, output), torch.nn.ReLU()))
+                
+
+    def forward(self, x, edge_index, edge_attr=None, batch=None):
         # x = data.x
         # edge_index = data.edge_index
 
@@ -270,64 +319,80 @@ class GNNModel2(nn.Module):
         for layer in self.module_list:
             x = layer(x, edge_index, edge_attr=edge_attr)
             x = self.activation(x)
-        x = self.output(x)
-        return x
-
-"""
-GCN2 neural network as GCN2Conv does not work with the base GNN model. 
-"""
-class GCN2Model(torch.nn.Module):
-    def __init__(self,alpha=0.1, theta=0.5, input=3, hidden=20, output=20,layers=2, 
-                 shared_weights=True, dropout=0.0, **kwargs):
-        super().__init__()
-
-        self.lins = torch.nn.ModuleList()
-        self.lins.append(nn.Linear(input, hidden))
-        self.lins.append(nn.Linear(hidden, output))
-
-        self.convs = torch.nn.ModuleList()
-        for layer in range(layers):
-            self.convs.append(
-                GCN2Conv(hidden, alpha, theta, layer + 1,
-                         shared_weights, normalize=False))
-
-        self.dropout = dropout
-
-    def forward(self, data):
-        x = data.x
-        adj_t = data.adj_t
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = x_0 = self.lins[0](x).relu()
-
-        for conv in self.convs:
-            x = F.dropout(x, self.dropout, training=self.training)
-            x = conv(x, x_0, adj_t)
-            x = x.relu()
-
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = self.lins[1](x)
-
-        return x.log_softmax(dim=-1)
-
-
-"""
-Heterogeneous GNN with virtual nodes. 
-TODO: This implementation may need to be changed as currently
-the memory requirement for even a single virtual node is high for
-a graph with 250,000 nodes. 
-"""
-class VNModel(torch.nn.Module):
-    def __init__(self, metadata, **kwargs):
-        super().__init__()
-        self.gnn = GNNModel1(**kwargs)
-        self.gnn = to_hetero(self.gnn, metadata)
         
-    def forward(self, data):
-        x_dict = data.x_dict
-        edge_index_dict = data.edge_index_dict
-        output_x_dict = self.gnn(x_dict, edge_index_dict)
-        return output_x_dict['real']
+        if batch == None:
+            num_nodes = x.size()[2]**2
+            out = x.reshape(1, self.hidden_channels, num_nodes).squeeze().T
+            vn_emb = torch.sum(x, dim = 0)
+            # vn_emb = self.virtualnode_embedding(torch.zeros(1).to(edge_index.dtype).to(edge_index.device))
+            # vn_emb  = global_add_pool(x, None, size=1) + vn_emb
+        else: 
+            out = x.flatten(start_dim=2, end_dim=3).mT.flatten(start_dim=0, end_dim=1)
+            vn_emb = self.virtualnode_embedding(torch.zeros(batch.num_graphs).to(edge_index.dtype).to(edge_index.device))
+            vn_emb = global_add_pool(out, batch.batch) + vn_emb
+            
+        for mlp_layer in self.mlp_virtualnode_list:
+            vn_emb = mlp_layer(vn_emb)
+        x = self.output(out)
+        return x, vn_emb
 
+class GNN_Final_VN_Model(torch.nn.Module):
+    """
+    GNN model that customizes the torch_geometric.graphgym.models.gnn.GNN
+    to support specific handling of new conv layers.
+    """
+    def __init__(self, input=3, output=20, hidden=20, layers=2, 
+                    layer_type='GATConv', activation='LeakyReLU', batches=False, 
+                    edge_dim=None, **kwargs):
+        super(GNN_Final_VN_Model, self).__init__()
+        # Initialize the first layer
+        graph_layer = globals()[layer_type]
+        self.initial = graph_layer(input, hidden, edge_dim=edge_dim)
+        
+        # Initialize the subsequent layers
+        self.module_list = nn.ModuleList([graph_layer(hidden, hidden, edge_dim=edge_dim) for _ in range(layers - 1)])
+        
+        # Output layer
+        self.output = torch.nn.Linear(hidden, output)
+
+        # activation function
+        self.activation = globals()[activation]()
+
+        # code from Chen Cai
+        self.virtualnode_embedding = torch.nn.Embedding(1, hidden)
+        self.mlp_virtualnode_list = torch.nn.ModuleList()
+        torch.nn.init.constant_(self.virtualnode_embedding.weight.data, 0)
+        for layer in range(layers  - 2):
+            if batches:
+                self.mlp_virtualnode_list.append(
+                    torch.nn.Sequential(torch.nn.Linear(hidden, hidden), torch.nn.BatchNorm1d(hidden), torch.nn.LeakyReLU(), \
+                                        torch.nn.Linear(hidden, hidden), torch.nn.BatchNorm1d(hidden), torch.nn.LeakyReLU()))
+            else:
+                self.mlp_virtualnode_list.append(
+                    torch.nn.Sequential(torch.nn.Linear(hidden, hidden), torch.nn.ReLU(), \
+                                        torch.nn.Linear(hidden, hidden), torch.nn.ReLU()))
+        self.mlp_virtualnode_list.append(torch.nn.Sequential(torch.nn.Linear(hidden, hidden), torch.nn.ReLU(), \
+                                        torch.nn.Linear(hidden, output), torch.nn.ReLU()))
+                
+    def forward(self, x, edge_index, edge_attr=None, batch=None):
+        out = self.initial(x, edge_index, edge_attr=edge_attr)
+        
+        for layer in self.module_list:            
+            out = layer(out, edge_index, edge_attr=edge_attr)
+            out = self.activation(out)
+        
+        #vn_emb = self.virtualnode_embedding(torch.zeros(1).to(edge_index.dtype).to(edge_index.device))
+        if batch == None:
+            vn_emb = self.virtualnode_embedding(torch.zeros(1).to(edge_index.dtype).to(edge_index.device))
+            vn_emb  = global_add_pool(out, None, size=1) + vn_emb
+        else: 
+            vn_emb = self.virtualnode_embedding(torch.zeros(batch.num_graphs).to(edge_index.dtype).to(edge_index.device))
+            vn_emb = global_add_pool(out, batch.batch) + vn_emb
+        
+        for mlp_layer in self.mlp_virtualnode_list:
+            vn_emb = mlp_layer(vn_emb)
+        out = self.output(out)
+        return out, vn_emb
 
 class GNN_VN_Model(torch.nn.Module):
     """

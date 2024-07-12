@@ -4,235 +4,225 @@ import networkx as nx
 
 from scipy.spatial import Delaunay
 
-from torch_sparse import coalesce
 from torch_geometric.utils import erdos_renyi_graph
 from torch_geometric.nn import knn_graph, radius_graph
-
-def block_index(n, d, i):
-    return int(n*i*1./d)
-def block_size(n, d, i):
-    return block_index(n,d,i+1)-block_index(n,d,i)
-
-def getDevice():
-    return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-def build_fully_connected_graph(N, device=None):
-    index = torch.arange(N, device=device).unsqueeze(-1).expand([-1,N])
-    rol = torch.reshape(index, [-1])
-    col = torch.reshape(torch.t(index), [-1])
-    edge_index = torch.stack([rol, col], dim=0)
-    return edge_index
-
-'''
-edge index generator
-'''
-def gen_random_index(node_num=100, sparsity=0.5, device=None, **kwargs):
-    device = device or getDevice()
-    edge_index = erdos_renyi_graph(node_num, 1-sparsity, directed=True)
-    return edge_index.to(device).type(torch.long), node_num
-
-def gen_undirected_random_index(node_num=100, sparsity=0.5, device=None, **kwargs):
-    device = device or getDevice()
-    edge_index = erdos_renyi_graph(node_num, 1-sparsity, directed=False)
-    return edge_index.to(device).type(torch.long), node_num
-
-def gen_knn_index(node_num=100, dim=1, k=8, device=None, **kwargs):
-    device = device or getDevice()
-    pos = torch.rand([node_num, dim], dtype=torch.float, device=device)
-    edge_index = knn_graph(pos, k, )
-    return edge_index, node_num
-
-def gen_mesh_index(node_num=100, dim=2, device=None, **kwargs):
-    n, d = node_num, dim
-    n = max(n, d+3)
-    device = device or getDevice()
-
-    points = np.random.rand(n, d)
-    tri = Delaunay(points, qhull_options='QJ')
-    edge_index = [e for tett in tri.simplices for e in itertools.combinations(tett, 2)]
-    edge_index = list(set(edge_index))
-    edge_index = list(zip(*edge_index))
-    rol, col = edge_index
-    edge_index = [rol+col, col+rol]
-    edge_index = torch.tensor(edge_index, dtype=torch.long, device=torch.device('cpu'))
-    edge_index, _ = coalesce(edge_index, torch.zeros_like(edge_index)[0], n, n )
-    return edge_index.to(device), n
-
-def gen_lobster_index(node_num=100, lobster_prob=(0.2, 0.2), device=None, **kwargs):
-    device = device or getDevice()
-    p1, p2 = lobster_prob
-    n = node_num
-
-    path_edges = [list(range(n-1)), list(range(1,n))]
-    first_leaf_num = np.random.binomial(n, p1)
-    first_leaf_edges = [np.random.randint(low=0, high=n, size=first_leaf_num).tolist(),
-                        np.arange(n, n+first_leaf_num).tolist()]
-    second_leaf_num = np.random.binomial(first_leaf_num, p2)
-    second_leaf_edges = [np.random.randint(low=n, high=n+first_leaf_num, size=second_leaf_num).tolist(),
-                         np.arange(n+first_leaf_num, n+first_leaf_num+second_leaf_num).tolist()]
-
-    rol = path_edges[0]+first_leaf_edges[0]+second_leaf_edges[0]
-    col = path_edges[1]+first_leaf_edges[1]+second_leaf_edges[1]
-
-    edges = [rol+col, col+rol]
-    edge_index = torch.tensor(edges, dtype=torch.long, device=device)
-    return edge_index, n+first_leaf_num+second_leaf_num
-
-def gen_tree_index(node_num, device=None):
-    device = device or getDevice()
-    graph = nx.from_prufer_sequence(np.random.randint(low=0, high=node_num, size=[node_num-2]))
-    edge_index = torch.tensor(list(zip(*(graph.edges))), dtype=torch.long, device=device)
-    edge_index = torch.cat([edge_index, edge_index[:,[1,0]]], dim=-1)
-    # edge_index, _ = coalesce(edge_index, None, node_num, node_num )
-    edge_index, _ = coalesce(edge_index, torch.zeros_like(edge_index)[0], node_num, node_num )
-    return edge_index, node_num
-
-def gen_line_index(node_num, device=None, *args, **kwargs):
-    device = device or getDevice()
-    rol = torch.arange(node_num-1, device=device)
-    col = torch.arange(1, node_num, device=device)
-    edge_index = torch.cat([
-        torch.stack([rol, col], dim=0),
-        torch.stack([col, rol], dim=0),
-    ], dim=-1)
-    return edge_index, node_num
-
-def gen_grid_index(node_num, device=None, *args, **kwargs):
-    index = torch.arange(node_num*node_num, dtype=torch.long, device=device)
-    grid_index = index.reshape([node_num, node_num])
-    down_index = torch.stack([
-        grid_index[:-1].reshape(-1),
-        grid_index[1:].reshape(-1),
-    ], dim=0)
-    right_index = torch.stack([
-        grid_index[:,:-1].reshape(-1),
-        grid_index[:,1:].reshape(-1),
-    ], dim=0)
-    edge_index = torch.cat([down_index, right_index], dim=-1)
-    edge_index = torch.cat([edge_index, edge_index[[1,0]]],dim=-1)
-    return edge_index, node_num*node_num
-
-
-def gen_edge_index(index_generator='random', **kwargs):
-    return globals()['gen_%s_index'%index_generator](**kwargs)
-
-#=============== Testing ===============
-
-import multiprocessing as mp
-from torch_geometric.data import Data
 from torch_geometric.utils import to_networkx
-import networkx as nx
-import matplotlib.pyplot as plt
-plt.ion()
+from torch_geometric.data import Data
 
-POOL_NUM = 1
-pool = mp.Pool(POOL_NUM)
+import os
 
-def print_list_properties(l, name):
-    print('%s:\tmax %.2f, min %.2f, mean %.2f, std %.2f, median %.2f'
-          %(name, np.max(l), np.min(l), np.mean(l), np.std(l), np.median(l)))
-def _g2nx(edge_index):
-    assert(type(edge_index) == list)
-    g, ug = nx.DiGraph(), nx.Graph()
-    g.add_edges_from(edge_index)
-    print(g.number_of_nodes())
-    # ug.add_edges(edge_index)
-    return g
-def _shortest_path_length(g):
-    src, tgt = np.random.randint(g.number_of_nodes(), size=2)
-    for _ in range(100):
-        try:
-            return nx.shortest_path_length(g, source=src, target=tgt)
-        except:
-            pass
-    return 0
+from .baselines import *
 
-def _test_edge_index_generator(index_generator, device):
-    num = 1000
-    min_node_num, max_node_num = 4, 6
+import copy
 
-    # generation
-    start_time = time.time()
-    graphs = [index_generator(node_num=node_num) for node_num in
-              np.random.randint(min_node_num, max_node_num, num).tolist()]
-    print('** It takes %.2f seconds to generate %d graphs'%(time.time()-start_time, num))
+from tqdm import tqdm, trange
 
-    # node number distribution
-    node_num_list = [node_num for _, node_num in graphs]
-    print_list_properties(node_num_list, 'node_num')
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 
-    # edge number distribution
-    edge_num_list = [edge_index.size(1) for edge_index,_ in graphs]
-    print_list_properties(edge_num_list, 'edge_num')
+def npz_to_dataset(data):
+    
+    edge_index = torch.tensor(data['edge_index'], dtype=torch.long)
 
-    # sparsity distribution
-    sparsity_list = [edge_index.size(1)*1./node_num/(node_num-1)
-                     for edge_index, node_num in graphs]
-    print_list_properties(sparsity_list, 'sparsity')
+    srcs = torch.tensor(data['srcs'])
+    tars = torch.tensor(data['tars'])
+    lengths = torch.tensor(data['lengths'])
+    node_features = torch.tensor(data['node_features'], dtype=torch.double)
+    edge_weights = torch.tensor(data['distances'])
 
-    # degree distribution
-    # outer_degree_list = [deg for edge_index, node_num in graphs
-    #                      for deg in scatter(torch.ones_like(edge_index[0]),
-    #                                          edge_index[0], dim=0, dim_size=node_num, reduce='sum').tolist()]
-    # print_list_properties(outer_degree_list, 'outer_degree')
-    # inner_degree_list = [deg for edge_index, node_num in graphs
-    #                      for deg in scatter(torch.ones_like(edge_index[1]),
-    #                                          edge_index[1], dim=0, dim_size=node_num, reduce='sum').tolist()]
-    # print_list_properties(inner_degree_list, 'inner_degree')
+    return srcs, tars, lengths, node_features, edge_index, edge_weights
 
-    # convert to networkx graphs
-    start_time = time.time()
-    nx_graphs = [to_networkx(Data(x=torch.zeros([node_num,1],device=edge_index.device),
-                                  edge_index=edge_index))
-                 for edge_index, node_num in graphs]
-    print('** It takes %.2f seconds to convert to networkx graphs'%(time.time()-start_time))
+def generate_train_data(train_file_name, cnn_sz):
+    data = np.load(train_file_name, allow_pickle=True)
+    train_srcs, train_tars, train_lengths, node_features, edge_index, edge_weights = npz_to_dataset(data)
+    
+    graph_data = Data(x =node_features, edge_index = edge_index, edge_attr = edge_weights)
+    G = to_networkx(graph_data)
+    for i in trange(len(edge_index[0])):
+        v1 = edge_index[0][i].item()
+        v2 = edge_index[1][i].item()
+        G[v1][v2]['weight'] = graph_data.edge_attr[i].item()
+    ## Load CNN information
+    feats = node_features
 
-    # component distribution
-    component_number_list = [nx.number_weakly_connected_components(g) for g in nx_graphs]
-    print_list_properties(component_number_list, 'component_num')
+    total_num_nodes = len(node_features)
+    cnn_img =  feats.T.reshape(3, -1, total_num_nodes).swapaxes(0, 1).reshape(1, 3, cnn_sz, cnn_sz)
+    cnn_img = torch.tensor(cnn_img)
 
-    # planarity distribution
-    planarity_list = [nx.check_planarity(g)[0]*1. for g in nx_graphs]
-    print_list_properties(planarity_list, 'planarity')
+    test_info = {'graph': graph_data, 
+                 'nx_graph': G,
+                 'node_features': np.copy(node_features),
+                 'cnn_img': cnn_img, 
+                 'train_srcs': train_srcs.numpy(), 
+                 'train_tars': train_tars.numpy(), 
+                 'train_lengths': train_lengths.numpy()}
+    return test_info
 
-    # path distribution
-    path_length_list = [_shortest_path_length(g) for g in nx_graphs for _ in range(30)]
-    print_list_properties(path_length_list, 'path_length')
-    fig = plt.figure()
-    plt.hist(path_length_list, bins=50)
-    plt.title(str(index_generator.__name__))
-    plt.show()
+def load_top_lvl_directory_from_config(dataset_name, config):
+    layer_type = config['layer_type']
+    vn = config['vn']
+    mlp=config['mlp']
+    loss_func = config['loss']
+    if mlp:
+        aggr = config['aggr']
+    p = config['p']
+    
+    vn_ = 'vn' if vn else 'no-vn'
+    mlp_ = f'mlp/{aggr}' if mlp else 'siamese'
+    if mlp:
+        directory = f'/data/sam/terrain/models/single_dataset/{dataset_name}/{layer_type}/{vn_}/mlp/p-{p}/{aggr}/{loss_func}'
+    else:
+        directory = f'/data/sam/terrain/models/single_dataset/{dataset_name}/{layer_type}/{vn_}/siamese/p-{p}/{loss_func}'
+    return directory
 
-def test_random_cpu():
-    _test_edge_index_generator(gen_random_index, torch.device('cpu'))
-def test_random_gpu():
-    _test_edge_index_generator(gen_random_index, torch.device('cuda'))
-def test_undirected_random_cpu():
-    _test_edge_index_generator(gen_undirected_random_index, torch.device('cpu'))
-def test_undirected_random_gpu():
-    _test_edge_index_generator(gen_undirected_random_index, torch.device('cuda'))
-def test_knn_cpu():
-    _test_edge_index_generator(gen_knn_index, torch.device('cpu'))
-def test_knn_gpu():
-    _test_edge_index_generator(gen_knn_index, torch.device('cuda'))
-def test_mesh_cpu():
-    _test_edge_index_generator(gen_mesh_index, torch.device('cpu'))
-def test_mesh_gpu():
-    _test_edge_index_generator(gen_mesh_index, torch.device('cuda'))
-def test_lobster_cpu():
-    _test_edge_index_generator(gen_lobster_index, torch.device('cpu'))
-def test_lobster_gpu():
-    _test_edge_index_generator(gen_lobster_index, torch.device('cuda'))
-def test_tree_cpu():
-    _test_edge_index_generator(gen_tree_index, torch.device('cpu'))
-def test_tree_gpu():
-    _test_edge_index_generator(gen_tree_index, torch.device('cuda'))
+def load_models(model_dictionary, file, trials = ['1', '2', '3', '4', '5']):
+    best_models = {}
 
-if __name__ == '__main__':
-    objects = {k:v for k,v in globals().items() if k[:5] == 'test_'}
-    for k,v in objects.items():
-        print()
-        print('====Running %s====='%k)
-        v()
-    plt.ioff()
-    plt.show()
+    for model in model_dictionary:
+        directory = load_top_lvl_directory_from_config(file, model_dictionary[model])
+
+        mlp = model_dictionary[model]['mlp']
+        vn = model_dictionary[model]['vn']
+        layer_type = model_dictionary[model]['layer_type']
+        aggr = model_dictionary[model]['aggr']
+        
+        model_configs = model_dictionary[model]['model_config']
+        best_models[model] = {}
+
+        
+        for name in model_configs:
+            best_models[model][name] = {}
+            best_models[model][name]['gnn_model'] = []
+            best_models[model][name]['mlp_model'] = []
+            for t in trials:
+                cfg = model_configs[name]
+                if aggr == 'combine' or aggr == 'sum+diff+vn':
+                    cfg = copy.deepcopy(model_configs[name])
+                    cfg['mlp']['input'] = cfg['mlp']['input'] * 3
+                elif aggr == 'concat':
+                    cfg = copy.deepcopy(model_configs[name])
+                    cfg['mlp']['input'] = cfg['mlp']['input'] * 2 + 1
+                elif aggr == 'sum+diff':
+                    cfg = copy.deepcopy(model_configs[name])
+                    cfg['mlp']['input'] = cfg['mlp']['input'] * 2
+                    
+                mlp_model = MLPBaseline1(initialize_mlp(**cfg['mlp']), max=True, aggr=aggr)
+                if layer_type=='MLP':
+
+                    cfg_mlp = model_configs['best-GNN']['gnn']
+                    gnn_model = initialize_mlp(**cfg_mlp)
+                elif aggr == 'sum+diff+vn' and layer_type=='CNNLayer':
+                    gnn_model = CNN_Final_VN_Model(batches=None, layer_type=layer_type, edge_dim=1, **cfg['gnn'])
+                elif aggr == 'sum+diff+vn':
+                    gnn_model = GNN_Final_VN_Model(batches=None, layer_type=layer_type,edge_dim=1, **cfg['gnn'])
+                else:
+                    gnn_model = GNN_VN_Model(batches=None, layer_type=layer_type,edge_dim=1, **cfg['gnn']) if vn else GNNModel(layer_type=layer_type, edge_dim=1, **cfg['gnn'])
+                model_pth = os.path.join(directory, name, t, 'final_model.pt')
+
+                if not os.path.exists(model_pth):
+                    print(model, "not trained yet or not found at", model_pth)
+                    continue
+                model_info = torch.load(model_pth, map_location='cpu')
+                if mlp:
+                    gnn_info = model_info['gnn_state_dict']
+                    mlp_info = model_info['mlp_state_dict']
+                    gnn_model.load_state_dict(gnn_info)
+                    mlp_model.load_state_dict(mlp_info)
+                    gnn_model.to(torch.double)
+                    mlp_model.to(torch.double)
+                else:
+                    gnn_model.load_state_dict(model_info)
+                    gnn_model.to(torch.double)
+                best_models[model][name]['gnn_model'].append(gnn_model)
+                best_models[model][name]['mlp_model'].append(mlp_model)
+    return best_models
+
+
+
+def compute_embeddings(gnn, data):
+    vn_emb = None
+    if isinstance(gnn, nn.Sequential):
+        embedding_vecs = gnn(data.x)
+    elif isinstance(gnn, CNN_Final_VN_Model):
+        embedding_vecs, vn_emb = gnn(data, edge_index=None)
+    elif isinstance(gnn, GNN_Final_VN_Model):
+        embedding_vecs, vn_emb = gnn(data.x, data.edge_index, edge_attr = data.edge_attr)
+    elif isinstance(gnn.initial, CNNLayer):
+        embedding_vecs = gnn(data, edge_index = None)
+    else:
+        embedding_vecs = gnn(data.x, data.edge_index, edge_attr = data.edge_attr)
+    return embedding_vecs.detach().numpy(), vn_emb
+
+def test_model_error(embeddings, srcs, tars, lengths, mlp_model=None, p=1, vn_emb=None):
+    if vn_emb is not None:
+        vn_emb = torch.tensor(vn_emb)
+    if mlp_model:
+        preds = mlp_model(torch.tensor(embeddings[srcs]), 
+                          torch.tensor(embeddings[tars]), vn_emb=vn_emb)
+        preds = preds.squeeze(1).detach().numpy()
+    else:
+        preds = np.linalg.norm(embeddings[srcs]- embeddings[tars], ord=p, axis=1)
+    nz = np.nonzero(lengths)[0]
+    total_relative_error = np.abs(preds[nz] - lengths[nz])/lengths[nz]
+    mean_absolute_error = np.abs(preds[nz]-lengths[nz])
+    squared_error = np.square(preds[nz] - lengths[nz])
+    return total_relative_error, mean_absolute_error, squared_error, preds
+
+def generate_test_dataset(G, s=100):
+    num_nodes = len(G.nodes)
+    lengths = []
+    srcs = []
+    tars = []
+    if isinstance(s, list):
+        src_lst = s
+    else:
+        src_lst = np.random.choice(num_nodes, size=s)
+    for i in trange(len(src_lst)):
+        src = src_lst[i]
+        all_pairs_shortest_paths = nx.single_source_dijkstra_path_length(G, src, weight='weight')
+        for tar in all_pairs_shortest_paths:
+            if all_pairs_shortest_paths[tar] == 0:
+                continue
+            srcs.append(src)
+            tars.append(tar)
+            lengths.append(all_pairs_shortest_paths[tar])
+
+    return srcs, tars, lengths
+
+def get_highest_points_per_patch(patch_size, elevation_array, npp = 1):
+    rows = elevation_array.shape[0]
+    cols = elevation_array.shape[1]
+    counts = np.reshape(np.arange(0, rows * cols), (rows, cols))
+    srcs = []
+    for i in range(0, elevation_array.shape[0], patch_size):
+        for j in range(0, elevation_array.shape[1], patch_size):
+            patch = elevation_array[i:i + patch_size, j:j + patch_size]
+            ct_patch = counts[i:i+patch_size, j:j + patch_size]
+            ind = np.unravel_index(np.argmax(patch, axis=None), patch.shape)
+            src = ct_patch[ind]
+            srcs.append(src)
+    return srcs
+
+def dimensionality_reduction(X, n_components=2, method='PCA'):
+    if method == 'PCA':
+        dim_reduce = PCA(n_components=n_components)
+    elif method == 'tSNE':
+        dim_reduce =TSNE(n_components=n_components)
+    else:
+        raise NotImplementedError("Other methods not supported")
+
+    X_new = dim_reduce.fit_transform(X)
+    return X_new
+
+def get_contour(x, y, z, tar_idx, n):
+    height_array = np.zeros((n, n))
+    x_array = np.zeros((n, n))
+    y_array = np.zeros((n, n))
+    for i in range(len(tar_idx)):
+        t_idx = tar_idx[i]
+        t_x = t_idx // n
+        t_y = t_idx % n
+        height_array[t_x, t_y] = z[i]
+        x_array[t_x, t_y] = x[i]
+        y_array[t_x, t_y ] = y[i]
+    return height_array, x_array, y_array

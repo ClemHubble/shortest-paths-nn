@@ -74,22 +74,35 @@ def main():
     aggr = args.aggr
     finetune=False
     
-    coarse_to_rough_datafiles = ['25x25-625.npz', 
-                                 '50x50-2500.npz', 
-                                 '100x100-10000.npz', 
-                                 '200x200-20000.npz', 
-                                 '400x400-20000.npz']
-    coarse_to_rough_testfiles = ['25x25-100.npz', 
-                                 '50x50-100.npz', 
-                                 '100x100-100.npz', 
-                                 '200x200-200.npz', 
-                                 '400x400-200.npz']
-    
-    # coarse_to_rough_datafiles = ['25x25-525-pairs.npz', 
-    #                              '50x50-2500-pairs.npz', 
-    #                              '100x100-10000-pairs.npz', 
+    # coarse_to_rough_datafiles = ['25x25-625.npz', 
+    #                              '50x50-2500.npz', 
+    #                              '100x100-10000.npz', 
     #                              '200x200-20000.npz', 
-    #                              '400x400-20000-pairs.npz']
+    #                              '500x500-20000.npz']
+    
+    if 'norway' in args.dataset_name:
+        coarse_to_rough_datafiles = ['t500m-20k-train.npz', 't100m-10000-train.npz', 't010m-10000-train.npz']
+        if 'CNN' in args.layer_type:
+            coarse_to_rough_datafiles =  ['t500-cnn-train-20k.npz', 't100-cnn-train.npz',  't010m-10000-train-cnn.npz']
+    elif 'phil' in args.dataset_name:
+        coarse_to_rough_datafiles = ['t30/t030m-20k-train.npz', 't010/t010m-20k-train.npz', 't005/t005-10k-train.npz']
+        if 'CNN' in args.layer_type:
+            coarse_to_rough_datafiles = ['t30/t030-cnn-train-20k.npz','t010/t010-cnn-train-20k.npz', 't005/t005-10k-train-cnn.npz' ]
+    elif 'holland' in args.dataset_name:
+        coarse_to_rough_datafiles = ['t010/t010-20k-train.npz', 't005/t005-20k-train.npz', 't001/t001-10k-train.npz']
+        if 'CNN' in args.layer_type:
+            coarse_to_rough_datafiles = ['t010/t010-cnn-train-20k.npz','t005/t005-cnn-train-20k.npz', 't001/t001-10k-train-cnn.npz' ]
+
+    #coarse_to_rough_datafiles = ['500x500-20000.npz']
+    coarse_to_refined_testfiles = ['dummy-test.npz', 
+                                 'dummy-test.npz', 
+                                 'dummy-test.npz', 
+                                 'dummy-test.npz', 
+                                 'dummy-test.npz']
+    
+    coarse_to_refined_datafiles = ['25x25-10k.npz', 
+                                 '50x50-20k.npz', 
+                                 '100x100-50k.npz']
     # coarse_to_rough_testfiles = ['25x25-100.npz', 
     #                              '50x50-250.npz', 
     #                              '100x100-250.npz', 
@@ -106,13 +119,13 @@ def main():
                             args.p,
                             args.trial)
     original_log_dir = log_dir
-    for i in range(len(coarse_to_rough_datafiles)):
+    for i in range(len(coarse_to_refined_datafiles)):
         # switch to off
-        train_filename = coarse_to_rough_datafiles[i]
-        test_filename = coarse_to_rough_testfiles[i]
+        train_filename = coarse_to_refined_datafiles[i]
+        test_filename = coarse_to_refined_testfiles[i]
         print(output_dir, train_filename)
         train_file = os.path.join(output_dir, 'data', args.train_data, train_filename)
-        test_file = os.path.join(output_dir, 'data', args.test_data, 'test', test_filename)
+        test_file = os.path.join(output_dir, 'data', test_filename)
 
         train_data = np.load(train_file, allow_pickle=True)
         test_data = np.load(test_file, allow_pickle=True)
@@ -140,6 +153,14 @@ def main():
             log_dir = finetune_file
         # log_dir = '/data/sam/terrain/models/single_dataset/norway/coarse-to-rough/GeneralConvMaxAttention/vn/mlp/p-1/max/mse_loss/best-GNN/1/200x200-20000/'
         # finetune_file = '/data/sam/terrain/models/single_dataset/norway/coarse-to-rough/GeneralConvMaxAttention/vn/mlp/p-1/mse_loss/best-GNN/1/400x400-20000-pairs/'
+        
+        #### TAKE THIS OUT 
+        # finetune = True
+        # log_dir = os.path.join(original_log_dir, 't100m-10000-train')
+        # finetune_file = os.path.join(original_log_dir, 't010m-10000-train')
+        #####
+        #print(finetune_file, log_dir)
+
         for modelname in model_configs:
             config=model_configs[modelname]
 
@@ -147,7 +168,7 @@ def main():
                                         test_node_features, test_edge_index, test_dataloader,layer_type=args.layer_type, 
                                         loss_func=args.loss, model_config = config, epochs=args.epochs, device=args.device,
                                         siamese=siamese, log_dir=log_dir, virtual_node=vn, aggr=aggr, lr=args.lr, p=args.p, 
-                                        log=True, finetune=finetune, edge_attr=train_edge_attr, finetune_file=finetune_file)
+                                        log=False, finetune=finetune, edge_attr=train_edge_attr, finetune_file=finetune_file)
         log_dir = finetune_file
         finetune=True
 

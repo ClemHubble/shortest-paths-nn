@@ -27,9 +27,9 @@ echo "Siamese? $siamese"
 echo "VN? $vn"
 echo "layer type: $layer_type"
 echo "Aggr: $aggr"
-echo "Loss: $loss"
+echo "p= $p"
 
-python train_single_dataset_patch.py --train-data $train_data \
+python train-finetune-MLP.py --train-data $train_data \
 --test-data $test_data \
 --epochs $epochs\
  --device $device \
@@ -40,6 +40,7 @@ python train_single_dataset_patch.py --train-data $train_data \
 --vn $vn \
 --layer-type $layer_type \
 --aggr $aggr \
---loss $loss \
+--p $p \
+--finetune $finetune \
 --include-edge-attr $include_edge_attr \
 --trial $2
