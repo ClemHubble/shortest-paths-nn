@@ -64,6 +64,10 @@ def nmse_loss(pred, target):
 def mse_loss(pred, target):
     return torch.mean(torch.square(pred - target))
 
+def sqrt_distance(pred, target):
+    sqrt_distance = torch.sqrt(target)
+    return torch.mean(torch.square(pred - sqrt_distance))
+
 def compute_validation_loss(node_embeddings, dataloader, mlp=None, device='cuda:0'):
     total = 0
     count = 0
@@ -200,7 +204,7 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
         if aggr == 'combine':
             mlp_config['input'] = mlp_config['input'] * 3
         elif aggr == 'concat':
-            mlp_config['input'] = mlp_config['input'] * 2 + 1
+            mlp_config['input'] = mlp_config['input'] * 2 
         elif aggr == 'sum+diff':
             mlp_config['input'] = mlp_config['input'] * 2
         elif aggr == 'sum+diff+vn':
@@ -397,6 +401,7 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
                             'optimizer_state_dict':optimizer.state_dict()}, path)
 
     print("Final training loss:", total_loss/batch_count)
+    logging.info(f'final training loss: {total_loss/batch_count}')
     if siamese:
         path = os.path.join(log_dir, 'final_model.pt')
         print("saving model to:", path)

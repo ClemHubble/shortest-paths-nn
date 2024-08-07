@@ -185,10 +185,10 @@ def construct_pyg_dataset(G, node_features, filename, size=100, sampling_techniq
         srcs.append(src)
         tars.append(tar)
         lengths.append(length)
-    rotation = np.array([[np.cos(np.pi/9), -np.sin(np.pi/9)], [np.sin(np.pi/9), np.cos(np.pi/9)]])
-    node_features = np.array(node_features)
-    rotated_pts_x_y = (rotation @ node_features[:, :2].T).T
-    node_features[:, :2] = rotated_pts_x_y
+    # rotation = np.array([[np.cos(np.pi/9), -np.sin(np.pi/9)], [np.sin(np.pi/9), np.cos(np.pi/9)]])
+    # node_features = np.array(node_features)
+    # rotated_pts_x_y = (rotation @ node_features[:, :2].T).T
+    # node_features[:, :2] = rotated_pts_x_y
     print("Saved dataset in:", filename)
     np.savez(filename, 
          edge_index = edges, 
@@ -221,21 +221,21 @@ def main():
     row,col = np.random.choice(elevations.shape[0], size=[2,])
     print(row, col)
     ## Norway
-    row = 122 
+    # row = 122 
     # col = 1647
-    col = 1021
+    # col = 1021
     ## Philadelphia
     # row = 181 
     # col = 613
     ## Holland
-    # row = 439 
-    # col = 471
+    row = 439 
+    col = 471
     ## LA
     # row = 624 
     # col = 510
-    xv_n = xv[row:row+50, col:col+50]
-    yv_n = yv[row:row+50, col:col+50]
-    elevations_n = elevations[row:row+50, col:col+50]
+    xv_n = xv[row:row+250:5, col:col+250:5]
+    yv_n = yv[row:row+250:5, col:col+250:5]
+    elevations_n = elevations[row:row+250:5, col:col+250:5]
 
     res = args.graph_resolution
     sz = args.dataset_size
@@ -248,7 +248,7 @@ def main():
 
     G, node_features = construct_nx_graph(xv_n, yv_n, elevations_n, triangles=args.triangles, scale=args.edge_weight)
     for i in range(10):
-        filename = f'{args.filename}/res-1-rot-{i}.npz'
+        filename = f'{args.filename}/c2-res-5-{i}.npz'
         construct_pyg_dataset(G, 
                             node_features, 
                             filename, 

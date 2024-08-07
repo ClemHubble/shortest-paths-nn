@@ -36,6 +36,7 @@ def format_log_dir(output_dir,
                    aggr, 
                    loss_func, 
                    layer_type,
+                   p,
                    trial):
     log_dir = os.path.join(output_dir, 
                            'models',
@@ -43,7 +44,8 @@ def format_log_dir(output_dir,
                            dataset_name, 
                            layer_type,
                            'vn' if vn else 'no-vn',
-                           'siamese' if siamese else 'mlp')
+                           'siamese' if siamese else 'mlp',
+                           f'p-{p}')
     if not siamese:
         log_dir = os.path.join(log_dir, aggr)
     log_dir = os.path.join(log_dir, loss_func, modelname, trial)
@@ -79,6 +81,7 @@ def main():
     parser.add_argument('--layer-type', type=str)
     parser.add_argument('--trial', type=str)
     parser.add_argument('--finetune', type=int, default=0)
+    parser.add_argument('--p', type=int, default=1)
     parser.add_argument('--include-edge-attr', type=int, default=0)
 
     args = parser.parse_args()
@@ -117,7 +120,7 @@ def main():
     # If virtual node, convert to TerrainHeteroData
     metadata=None
 
-    train_dataloader = DataLoader(train_dataset, follow_batch=['src', 'tar'], batch_size=args.batch_size)
+    train_dataloader = DataLoader(train_dataset, follow_batch=['src', 'tar'], batch_size=args.batch_size, shuffle=True)
     
     test_dataloader = DataLoader(test_dataset, follow_batch=['src', 'tar'], batch_size = args.batch_size, shuffle=True)
     
@@ -136,6 +139,7 @@ def main():
                                 aggr, 
                                 args.loss, 
                                 args.layer_type,
+                                args.p,
                                 args.trial)
         config=model_configs[modelname]
         print(type(train_dataloader))

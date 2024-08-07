@@ -101,7 +101,7 @@ def load_models(model_dictionary, file, trials = ['1', '2', '3', '4', '5']):
                     cfg['mlp']['input'] = cfg['mlp']['input'] * 3
                 elif aggr == 'concat':
                     cfg = copy.deepcopy(model_configs[name])
-                    cfg['mlp']['input'] = cfg['mlp']['input'] * 2 + 1
+                    cfg['mlp']['input'] = cfg['mlp']['input'] * 2 
                 elif aggr == 'sum+diff':
                     cfg = copy.deepcopy(model_configs[name])
                     cfg['mlp']['input'] = cfg['mlp']['input'] * 2

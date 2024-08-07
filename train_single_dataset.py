@@ -76,8 +76,8 @@ def main():
     finetune=True if args.finetune == 1 else False
     # trial = args.trial
 
-    # trials = ['1', '2', '3', '4', '5']
-    trials = ['1']
+    trials = ['1', '2', '3', '4', '5']
+    
 
     # files = ['edge-weight-50k-constrained-0.npz', 
     #          'edge-weight-50k-constrained-1.npz', 

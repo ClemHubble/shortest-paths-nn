@@ -163,9 +163,10 @@ def construct_patch_dataset(xv, yv, dem_array, patch_size, sz, triangles=False, 
     print("size of dataset:", sz, "patch sizes:", patch_size)
     n = dem_array.shape[0]
     m = dem_array.shape[1]
-    cx = np.random.choice(n-patch_size, size=5, replace=False)
-    cy = np.random.choice(m - patch_size, size=5, replace=False)
-    for i in range(5):
+    nc = 10
+    cx = np.random.choice(n-patch_size, size=nc, replace=False)
+    cy = np.random.choice(m - patch_size, size=nc, replace=False)
+    for i in range(nc):
         xr = cx[i]
         yr = cy[i]
         xv_patch = xv[xr: xr + patch_size, yr: yr+patch_size]
@@ -178,8 +179,8 @@ def construct_patch_dataset(xv, yv, dem_array, patch_size, sz, triangles=False, 
                                                   scale=scale)
 
         edge_index, weights = get_edge_index(graph)
-        for m in range(patch_size * patch_size):
-            for n in range(i + 1, patch_size * patch_size):
+        for m in trange(patch_size * patch_size):
+            for n in range(m + 1, patch_size * patch_size):
                 shortest_path = nx.shortest_path_length(graph, m, n, weight='weight')
                 data=TerrainPatchesData(x=node_features, 
                                         edge_index = edge_index, 

@@ -99,7 +99,7 @@ class MLPBaseline1(nn.Module):
         elif self.aggr == 'combine':
             embd = torch.hstack((input1 + input2, torch.max(input1, input2), torch.min(input1, input2)))
         elif self.aggr == 'concat':
-            embd = torch.hstack((input1, input2, torch.unsqueeze(torch.norm(input1 - input2, p=1, dim=1), dim=1)))
+            embd = torch.hstack((input1, input2))
         elif self.aggr == 'sum+diff':
             embd = torch.hstack((input1 + input2, torch.abs(input1 - input2)))
         elif self.aggr == 'sum+diff+vn' and batch:
@@ -108,6 +108,8 @@ class MLPBaseline1(nn.Module):
             embd = torch.hstack((input1 + input2, torch.abs(input1 - input2), vn_emb.repeat(input1.size()[0], 1)))
         elif self.aggr == 'diff':
             embd = torch.abs(input1- input2)
+        elif self.aggr == 'diff-no-abs':
+            embd = input1 - input2
         return self.mlp(embd)
 
 
@@ -363,12 +365,12 @@ class GNN_Final_VN_Model(torch.nn.Module):
         self.mlp_virtualnode_list = torch.nn.ModuleList()
         torch.nn.init.constant_(self.virtualnode_embedding.weight.data, 0)
         for layer in range(layers  - 2):
-            if batches:
-                self.mlp_virtualnode_list.append(
-                    torch.nn.Sequential(torch.nn.Linear(hidden, hidden), torch.nn.BatchNorm1d(hidden), torch.nn.LeakyReLU(), \
-                                        torch.nn.Linear(hidden, hidden), torch.nn.BatchNorm1d(hidden), torch.nn.LeakyReLU()))
-            else:
-                self.mlp_virtualnode_list.append(
+            # if batches:
+            #     self.mlp_virtualnode_list.append(
+            #         torch.nn.Sequential(torch.nn.Linear(hidden, hidden), torch.nn.BatchNorm1d(hidden), torch.nn.LeakyReLU(), \
+            #                             torch.nn.Linear(hidden, hidden), torch.nn.BatchNorm1d(hidden), torch.nn.LeakyReLU()))
+            # else:
+            self.mlp_virtualnode_list.append(
                     torch.nn.Sequential(torch.nn.Linear(hidden, hidden), torch.nn.ReLU(), \
                                         torch.nn.Linear(hidden, hidden), torch.nn.ReLU()))
         self.mlp_virtualnode_list.append(torch.nn.Sequential(torch.nn.Linear(hidden, hidden), torch.nn.ReLU(), \

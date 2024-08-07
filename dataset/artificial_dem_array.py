@@ -24,19 +24,21 @@ def create_elevation_array(n, k=10):
     xv, yv = np.meshgrid(x, y)
 
     z_out = np.zeros((n0, n0))
-    centers = []
-
+    centers = [(50, 50), (200, 50), (50, 150), (250, 150), (130, 230)]
     for i in range(k):
-        center = np.random.choice(xv[0], size=2, replace=False)
-        x_c = center[0]
-        y_c = center[1]
+        center = centers[i]
+        x_c = xv[center[0], center[1]]
+        y_c = yv[center[0], center[1]]
         centers.append(center)
-        a = np.random.uniform(low=1.0, high=5.0)
-        s_x = np.random.uniform(low=1.0, high=4.0)
-        s_y = np.random.uniform(low=1.0, high=4.0)
+        #a = np.random.uniform(low=1.0, high=5.0)
+        a = 3.0
+        # s_x = np.random.uniform(low=1.0, high=4.0)
+        # s_y = np.random.uniform(low=1.0, high=4.0)
+        s_x = 2.0
+        s_y = 2.0
         z = gaussian_2d(xv, yv, amplitude=a, center_x = x_c, center_y = y_c, sigma_x=s_x, sigma_y=s_y)
         z_out += z
-    return xv[::10, ::10], yv[::10, ::10], z_out[::10, ::10], z_out
+    return  z_out
 
 def get_array_neighbors_(x, y, left=0, right=500, radius=1):
     temp = [(x - radius, y), (x + radius, y), (x, y - radius), (x, y + radius)]
@@ -148,21 +150,21 @@ def main():
     parser.add_argument("--test-dataset-size", type=int)
     args = parser.parse_args()
 
-    for k in range(10):
+    for k in range(1):
         
-        upsample_save = f'/data/sam/terrain/data/artificial/small-k-{k}-upsample_arr.npy'
-        xv, yv, dem, upsampled_dem = create_elevation_array(n=args.size, k=k)
+        upsample_save = f'/data/sam/terrain/data/artificial/for-lucas.npy'
+        xv, yv, dem, upsampled_dem = create_elevation_array(n=args.size, k=5)
         np.save(upsample_save, upsampled_dem)
         img = f'../images/small-k-{k}.png'
         print("saved in", img)
-        G, node_features = construct_nx_graph(xv, yv, dem, save_img=img)
-        #for train_dataset_size in range(10000, 60000, 10000):
-        train_filename = f'/data/sam/terrain/data/artificial/small-k-{k}-train-full.npz'
-        construct_pyg_dataset(G, node_features, filename=train_filename, size=10)
-        test_filename = f'/data/sam/terrain/data/artificial/small-k-{k}-test-{args.test_dataset_size}.npz'
+        # G, node_features = construct_nx_graph(xv, yv, dem, save_img=img)
+        # #for train_dataset_size in range(10000, 60000, 10000):
+        # train_filename = f'/data/sam/terrain/data/artificial/small-k-{k}-train-full.npz'
+        # construct_pyg_dataset(G, node_features, filename=train_filename, size=10)
+        # test_filename = f'/data/sam/terrain/data/artificial/small-k-{k}-test-{args.test_dataset_size}.npz'
 
         
-        construct_pyg_dataset(G, node_features, filename=test_filename, size=args.test_dataset_size)
+        # construct_pyg_dataset(G, node_features, filename=test_filename, size=args.test_dataset_size)
     return 0
 
 if __name__=="__main__":

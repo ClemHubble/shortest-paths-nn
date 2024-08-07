@@ -31,8 +31,8 @@ echo "Loss: $loss"
 
 python train_single_dataset_patch.py --train-data $train_data \
 --test-data $test_data \
---epochs $epochs\
- --device $device \
+--epochs $epochs \
+--device $device \
 --batch-size $batch_size \
 --dataset-name $dataset_name \
 --config $config \
@@ -42,4 +42,5 @@ python train_single_dataset_patch.py --train-data $train_data \
 --aggr $aggr \
 --loss $loss \
 --include-edge-attr $include_edge_attr \
+--p $p \
 --trial $2
