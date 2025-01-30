@@ -17,21 +17,32 @@ function parse_yaml {
 }
 
 echo "Experiment config: $1"
+echo "Trial: $2"
 
 eval $(parse_yaml $1)
+echo "Training data: $train_data"
+echo "Testing data: $test_data"
 echo "Device: $device"
 echo "Siamese? $siamese"
 echo "VN? $vn"
-echo "Max if not Siamese? $max"
 echo "layer type: $layer_type"
-echo "loss: $loss"
+echo "Aggr: $aggr"
+echo "p= $p"
+echo "loss = $loss"
 
-python train_artificial_terrain.py --epochs $epochs\
+python train_artificial_terrain.py --train-data $train_data \
+--test-data $test_data \
+--epochs $epochs\
  --device $device \
 --batch-size $batch_size \
+--dataset-name $dataset_name \
 --config $config \
 --siamese $siamese \
 --vn $vn \
---max $max \
+--layer-type $layer_type \
+--aggr $aggr \
+--p $p \
 --loss $loss \
---layer-type $layer_type 
+--finetune $finetune \
+--include-edge-attr $include_edge_attr \
+--trial $2

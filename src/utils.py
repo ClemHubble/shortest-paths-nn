@@ -43,11 +43,13 @@ def generate_train_data(train_file_name, cnn_sz):
         v2 = edge_index[1][i].item()
         G[v1][v2]['weight'] = graph_data.edge_attr[i].item()
     ## Load CNN information
-    feats = node_features
+    cnn_img = None
+    if cnn_sz == None:
+        feats = node_features
 
-    total_num_nodes = len(node_features)
-    cnn_img =  feats.T.reshape(3, -1, total_num_nodes).swapaxes(0, 1).reshape(1, 3, cnn_sz, cnn_sz)
-    cnn_img = torch.tensor(cnn_img)
+        total_num_nodes = len(node_features)
+        cnn_img =  feats.T.reshape(3, -1, total_num_nodes).swapaxes(0, 1).reshape(1, 3, cnn_sz, cnn_sz)
+        cnn_img = torch.tensor(cnn_img)
 
     test_info = {'graph': graph_data, 
                  'nx_graph': G,
@@ -75,7 +77,7 @@ def load_top_lvl_directory_from_config(dataset_name, config):
         directory = f'/data/sam/terrain/models/single_dataset/{dataset_name}/{layer_type}/{vn_}/siamese/p-{p}/{loss_func}'
     return directory
 
-def load_models(model_dictionary, file, trials = ['1', '2', '3', '4', '5']):
+def load_models(model_dictionary, file, trials = ['1', '2', '3', '4', '5'], finetune=False):
     best_models = {}
 
     for model in model_dictionary:
@@ -99,25 +101,33 @@ def load_models(model_dictionary, file, trials = ['1', '2', '3', '4', '5']):
                 if aggr == 'combine' or aggr == 'sum+diff+vn':
                     cfg = copy.deepcopy(model_configs[name])
                     cfg['mlp']['input'] = cfg['mlp']['input'] * 3
-                elif aggr == 'concat':
+                elif aggr == 'concat' or aggr == 'sum+diff':
                     cfg = copy.deepcopy(model_configs[name])
                     cfg['mlp']['input'] = cfg['mlp']['input'] * 2 
-                elif aggr == 'sum+diff':
-                    cfg = copy.deepcopy(model_configs[name])
-                    cfg['mlp']['input'] = cfg['mlp']['input'] * 2
-                    
-                mlp_model = MLPBaseline1(initialize_mlp(**cfg['mlp']), max=True, aggr=aggr)
+                
+                if mlp:    
+                    mlp_model = MLPBaseline1(initialize_mlp(**cfg['mlp']), max=True, aggr=aggr)
+                else:
+                    mlp_model=None
                 if layer_type=='MLP':
 
-                    cfg_mlp = model_configs['best-GNN']['gnn']
+                    cfg_mlp = model_configs[name]['gnn']
                     gnn_model = initialize_mlp(**cfg_mlp)
+                elif layer_type == 'Transformer':
+                    gnn_model=Transformer(**cfg['gnn'])
                 elif aggr == 'sum+diff+vn' and layer_type=='CNNLayer':
                     gnn_model = CNN_Final_VN_Model(batches=None, layer_type=layer_type, edge_dim=1, **cfg['gnn'])
                 elif aggr == 'sum+diff+vn':
                     gnn_model = GNN_Final_VN_Model(batches=None, layer_type=layer_type,edge_dim=1, **cfg['gnn'])
+
                 else:
                     gnn_model = GNN_VN_Model(batches=None, layer_type=layer_type,edge_dim=1, **cfg['gnn']) if vn else GNNModel(layer_type=layer_type, edge_dim=1, **cfg['gnn'])
-                model_pth = os.path.join(directory, name, t, 'final_model.pt')
+                
+                if finetune:
+                    model_pth = os.path.join(directory, name, t, 'finetune', 'final_model.pt')
+                    print(model_pth)
+                else:
+                    model_pth = os.path.join(directory, name, t, 'final_model.pt')
 
                 if not os.path.exists(model_pth):
                     print(model, "not trained yet or not found at", model_pth)
@@ -143,6 +153,8 @@ def compute_embeddings(gnn, data):
     vn_emb = None
     if isinstance(gnn, nn.Sequential):
         embedding_vecs = gnn(data.x)
+    elif isinstance(gnn, Transformer):
+        embedding_vecs = gnn(data.x.unsqueeze(dim=0), edge_index=None)
     elif isinstance(gnn, CNN_Final_VN_Model):
         embedding_vecs, vn_emb = gnn(data, edge_index=None)
     elif isinstance(gnn, GNN_Final_VN_Model):
@@ -157,8 +169,10 @@ def test_model_error(embeddings, srcs, tars, lengths, mlp_model=None, p=1, vn_em
     if vn_emb is not None:
         vn_emb = torch.tensor(vn_emb)
     if mlp_model:
+        print("mlp predictions.....")
         preds = mlp_model(torch.tensor(embeddings[srcs]), 
                           torch.tensor(embeddings[tars]), vn_emb=vn_emb)
+        print("finished mlp predictions")
         preds = preds.squeeze(1).detach().numpy()
     else:
         preds = np.linalg.norm(embeddings[srcs]- embeddings[tars], ord=p, axis=1)
@@ -168,26 +182,39 @@ def test_model_error(embeddings, srcs, tars, lengths, mlp_model=None, p=1, vn_em
     squared_error = np.square(preds[nz] - lengths[nz])
     return total_relative_error, mean_absolute_error, squared_error, preds
 
-def generate_test_dataset(G, s=100):
+
+def generate_test_dataset(G, s=100, keep_path=False):
     num_nodes = len(G.nodes)
     lengths = []
     srcs = []
     tars = []
+    paths = []
     if isinstance(s, list):
         src_lst = s
     else:
         src_lst = np.random.choice(num_nodes, size=s)
     for i in trange(len(src_lst)):
         src = src_lst[i]
-        all_pairs_shortest_paths = nx.single_source_dijkstra_path_length(G, src, weight='weight')
-        for tar in all_pairs_shortest_paths:
-            if all_pairs_shortest_paths[tar] == 0:
-                continue
-            srcs.append(src)
-            tars.append(tar)
-            lengths.append(all_pairs_shortest_paths[tar])
-
-    return srcs, tars, lengths
+        if keep_path:
+            all_pairs_shortest_paths = nx.single_source_dijkstra_path(G, src, weight='weight')
+            for tar in all_pairs_shortest_paths:
+                if all_pairs_shortest_paths[tar] == 0:
+                    continue
+                srcs.append(src)
+                tars.append(tar)
+                paths.append(all_pairs_shortest_paths[tar])
+        else:
+            all_pairs_shortest_paths = nx.single_source_dijkstra_path_length(G, src, weight='weight')
+            for tar in all_pairs_shortest_paths:
+                if all_pairs_shortest_paths[tar] == 0:
+                    continue
+                srcs.append(src)
+                tars.append(tar)
+                lengths.append(all_pairs_shortest_paths[tar])
+    if keep_path:
+        return srcs, tars, paths
+    else:
+        return srcs, tars, lengths
 
 def get_highest_points_per_patch(patch_size, elevation_array, npp = 1):
     rows = elevation_array.shape[0]

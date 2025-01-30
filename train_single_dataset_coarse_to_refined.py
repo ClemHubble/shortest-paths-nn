@@ -52,7 +52,8 @@ def format_log_dir(output_dir,
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset-name', type=str, help='Needed to construct output directory')
-    parser.add_argument('--train-data', type=str)
+    parser.add_argument('--finetune-from', type=str)
+    parser.add_argument('--train-data-files', type=str, nargs='+')
     parser.add_argument('--test-data', type=str)
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--config', type=str, default='configs/config-base.yml')
@@ -66,112 +67,82 @@ def main():
     parser.add_argument('--layer-type', type=str)
     parser.add_argument('--trial', type=str)
     parser.add_argument('--p', type=int, default=1 )
+    parser.add_argument('--uncertainty-model', type=int, default=0)
     parser.add_argument('--include-edge-attr', type=int, default=0)
 
     args = parser.parse_args()
     siamese = True if args.siamese == 1 else False
     vn = True if args.vn == 1 else False 
     aggr = args.aggr
-    finetune=False
+    trial = args.trial
+    uncertainty = True if args.uncertainty_model == 1 else False 
+    with open(args.config, 'r') as file:
+        model_configs = yaml.safe_load(file)
+    finetuning_files = [
+                        #'norway/norway-500-350k-train', 
+                       #'phil/phil-1k-350k-train'
+                        #'la/la-4k-175k-train'
+                        'norway/uncertainty/250/50k-2'
+                        ]
     
-    # coarse_to_rough_datafiles = ['25x25-625.npz', 
-    #                              '50x50-2500.npz', 
-    #                              '100x100-10000.npz', 
-    #                              '200x200-20000.npz', 
-    #                              '500x500-20000.npz']
-    
-    if 'norway' in args.dataset_name:
-        coarse_to_rough_datafiles = ['t500m-20k-train.npz', 't100m-10000-train.npz', 't010m-10000-train.npz']
-        if 'CNN' in args.layer_type:
-            coarse_to_rough_datafiles =  ['t500-cnn-train-20k.npz', 't100-cnn-train.npz',  't010m-10000-train-cnn.npz']
-    elif 'phil' in args.dataset_name:
-        coarse_to_rough_datafiles = ['t30/t030m-20k-train.npz', 't010/t010m-20k-train.npz', 't005/t005-10k-train.npz']
-        if 'CNN' in args.layer_type:
-            coarse_to_rough_datafiles = ['t30/t030-cnn-train-20k.npz','t010/t010-cnn-train-20k.npz', 't005/t005-10k-train-cnn.npz' ]
-    elif 'holland' in args.dataset_name:
-        coarse_to_rough_datafiles = ['t010/t010-20k-train.npz', 't005/t005-20k-train.npz', 't001/t001-10k-train.npz']
-        if 'CNN' in args.layer_type:
-            coarse_to_rough_datafiles = ['t010/t010-cnn-train-20k.npz','t005/t005-cnn-train-20k.npz', 't001/t001-10k-train-cnn.npz' ]
-
-    #coarse_to_rough_datafiles = ['500x500-20000.npz']
-    coarse_to_refined_testfiles = ['dummy-test.npz', 
-                                 'dummy-test.npz', 
-                                 'dummy-test.npz', 
-                                 'dummy-test.npz', 
-                                 'dummy-test.npz']
-    
-    coarse_to_refined_datafiles = ['25x25-10k.npz', 
-                                 '50x50-20k.npz', 
-                                 '100x100-50k.npz']
-    # coarse_to_rough_testfiles = ['25x25-100.npz', 
-    #                              '50x50-250.npz', 
-    #                              '100x100-250.npz', 
-    #                              '200x200-400.npz', 
-    #                              '400x400-100.npz']
-    log_dir = format_log_dir(output_dir, 
-                            args.dataset_name, 
-                            siamese, 
-                            'best-GNN', 
-                            vn, 
-                            aggr, 
-                            args.loss, 
-                            args.layer_type,
-                            args.p,
-                            args.trial)
-    original_log_dir = log_dir
-    for i in range(len(coarse_to_refined_datafiles)):
-        # switch to off
-        train_filename = coarse_to_refined_datafiles[i]
-        test_filename = coarse_to_refined_testfiles[i]
-        print(output_dir, train_filename)
-        train_file = os.path.join(output_dir, 'data', args.train_data, train_filename)
-        test_file = os.path.join(output_dir, 'data', test_filename)
-
-        train_data = np.load(train_file, allow_pickle=True)
-        test_data = np.load(test_file, allow_pickle=True)
-
-        train_dataset, train_node_features, train_edge_index = npz_to_dataset(train_data)
-        train_edge_attr = None 
-        if args.include_edge_attr:
-            train_edge_attr = train_data['distances']
-        print("Number of nodes:", len(train_node_features))
-        train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False)
-
-        test_dataset, test_node_features, test_edge_index = npz_to_dataset(test_data)
-        test_dataloader = DataLoader(test_dataset, batch_size = args.batch_size, shuffle=False)
-
-        # Load model configs
-        with open(args.config, 'r') as file:
-            model_configs = yaml.safe_load(file)
-        
-        finetune_file = os.path.join(original_log_dir, train_filename[:-4])
-        if not os.path.exists(finetune_file):
-            os.makedirs(finetune_file)
-        if i == 0:
-            # Note that log_dir is the file from which we load the previous model and the finetune file is the 
-            # file where we store the final finetuned model. 
-            log_dir = finetune_file
-        # log_dir = '/data/sam/terrain/models/single_dataset/norway/coarse-to-rough/GeneralConvMaxAttention/vn/mlp/p-1/max/mse_loss/best-GNN/1/200x200-20000/'
-        # finetune_file = '/data/sam/terrain/models/single_dataset/norway/coarse-to-rough/GeneralConvMaxAttention/vn/mlp/p-1/mse_loss/best-GNN/1/400x400-20000-pairs/'
-        
-        #### TAKE THIS OUT 
-        # finetune = True
-        # log_dir = os.path.join(original_log_dir, 't100m-10000-train')
-        # finetune_file = os.path.join(original_log_dir, 't010m-10000-train')
-        #####
-        #print(finetune_file, log_dir)
-
+    finetuning_files = ['norway/weighted-1plusSlope/norway-250-50k','norway/weighted-1plusSlope/norway-500-50k' ]
+    if not uncertainty:
+        finetuning_files = args.train_data_files
+    else:
+        finetuning_files = []
+        for i in range(1, 60):
+            finetuning_files.append(f'{args.dataset_name}/uncertainty/250/50k-{i}')
+    for file in finetuning_files:
         for modelname in model_configs:
+            #data_file =files[i]
+        
+            # Load data 
+            train_file = os.path.join(output_dir, 'data', f'{file}.npz')
+            print("Training file", train_file)
+            #test_file = os.path.join(output_dir, 'data', args.test_data)
+            
+            test_file = '/data/sam/terrain/data/dummy-test.npz'
+            train_data = np.load(train_file, allow_pickle=True)
+            test_data = np.load(test_file, allow_pickle=True)
+
+            train_dataset, train_node_features, train_edge_index = npz_to_dataset(train_data)
+            print(len(train_dataset))
+            train_edge_attr = None 
+            if args.include_edge_attr:
+                train_edge_attr = train_data['distances']
+            print("Number of nodes:", len(train_node_features))
+            train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+
+            test_dataset, test_node_features, test_edge_index = npz_to_dataset(test_data)
+            test_dataloader = DataLoader(test_dataset, batch_size = args.batch_size, shuffle=True)
+
+            # Load model configs
+            
+            
+            loss_data = []
+            
+            log_dir = format_log_dir(output_dir, 
+                                    args.dataset_name, 
+                                    siamese, 
+                                    modelname, 
+                                    vn, 
+                                    aggr, 
+                                    args.loss, 
+                                    args.layer_type,
+                                    args.p,
+                                    args.trial)
+            
             config=model_configs[modelname]
+            print(modelname, config)
 
-            train_single_graph_baseline1(train_node_features, train_edge_index, train_dataloader, 
-                                        test_node_features, test_edge_index, test_dataloader,layer_type=args.layer_type, 
-                                        loss_func=args.loss, model_config = config, epochs=args.epochs, device=args.device,
-                                        siamese=siamese, log_dir=log_dir, virtual_node=vn, aggr=aggr, lr=args.lr, p=args.p, 
-                                        log=False, finetune=finetune, edge_attr=train_edge_attr, finetune_file=finetune_file)
-        log_dir = finetune_file
-        finetune=True
+            log_dir = args.finetune_from
 
+            finetune_file = os.path.join(log_dir, file, args.loss)
+            output = train_single_graph_baseline1(train_node_features, train_edge_index, train_dataloader, 
+                                                test_node_features, test_edge_index, test_dataloader,layer_type=args.layer_type, 
+                                                loss_func=args.loss, model_config = config, epochs=args.epochs, device=args.device,
+                                                siamese=siamese, log_dir=log_dir, virtual_node=vn, aggr=aggr, lr=args.lr, p=args.p, 
+                                                log=False, finetune=True, edge_attr=train_edge_attr, finetune_file=finetune_file)
     
 if __name__=='__main__':
     main()

@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 from torchmetrics.regression import MeanAbsolutePercentageError
 
+from torch_geometric.utils import k_hop_subgraph
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard.writer import SummaryWriter
 from torch_geometric.transforms import ToSparseTensor, VirtualNode, ToUndirected
@@ -32,16 +33,17 @@ sparse_tensor = ToSparseTensor()
 virtual_node_transform = VirtualNode()
 
 class SingleGraphShortestPathDataset(Dataset):
-    def __init__(self, sources, targets, lengths):
+    def __init__(self, sources, targets, lengths, l2):
         self.sources = sources
         self.targets = targets
         self.lengths = lengths
+        self.l2 = l2
 
     def __len__(self):
         return len(self.sources)
 
     def __getitem__(self, idx):
-        return self.sources[idx], self.targets[idx], self.lengths[idx]
+        return self.sources[idx], self.targets[idx], self.lengths[idx], self.l2[idx]
 
 class TerrainPatchesDataset(Data):
     def __inc__(self, key, value, *args, **kwargs):
@@ -55,10 +57,20 @@ class TerrainPatchesDataset(Data):
 def msle_loss(pred, target):
     return mse_loss(torch.log(pred + 1),  torch.log(target + 1))
 
+# scale loss function based on difference from L2
+def weighted_mse_loss(pred, target, l2_diffs):
+    errs = (target/l2_diffs) * torch.square(pred - target)
+    return torch.mean(errs)
+
 # NMSE loss function
 def nmse_loss(pred, target):
     nz = torch.nonzero(target)
     errs = torch.square(pred[nz] - target[nz])/torch.square(target[nz])
+    return torch.mean(errs)
+
+def nmae_loss(pred, target):
+    nz = torch.nonzero(target)
+    errs = torch.abs(pred[nz] - target[nz])/torch.abs(target[nz])
     return torch.mean(errs)
 
 def mse_loss(pred, target):
@@ -123,8 +135,9 @@ def npz_to_dataset(data):
     tars = torch.tensor(data['tars'])
     lengths = torch.tensor(data['lengths'])
     node_features = torch.tensor(data['node_features'], dtype=torch.double)
+    l2 = torch.norm(node_features[srcs] - node_features[tars], dim=1, p=2)
 
-    train_dataset = SingleGraphShortestPathDataset(srcs, tars, lengths)
+    train_dataset = SingleGraphShortestPathDataset(srcs, tars, lengths, l2)
 
     return train_dataset, node_features, edge_index
 
@@ -138,10 +151,11 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
                                  log=True, finetune=False, edge_attr = None, finetune_file=None):
     
     # initiate summary writer
-    
+    print(model_config)
     gnn_config = model_config['gnn']
     if not patch:
         edge_attr = torch.tensor(edge_attr) if edge_attr is not None else None
+        edge_attr = edge_attr.unsqueeze(-1)
         graph_data = Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr)
         if log:
             test_graph = Data(x=test_node_features, edge_index=test_edge_index, edge_attr=edge_attr)
@@ -176,7 +190,8 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
         gnn_model = CNN_Final_VN_Model(batches=patch, layer_type=layer_type, edge_dim=edge_dim, **gnn_config)
     # Transformer
     elif layer_type == 'Transformer':
-        gnn_model = GraphTransformer(**gnn_config)
+        gnn_model = Transformer(**gnn_config)
+        #gnn_model = GraphTransformer(**gnn_config)
     # Add laplacian positional encodings to the transformer (k = 10 by default)
     elif layer_type == 'Transformer-LPE':
         print("Laplacian positional encodings")
@@ -186,7 +201,7 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
         gnn_model=GraphTransformer(**gnn_config)
     elif layer_type == "MLP":
         deepsets_config = model_config['gnn']
-        gnn_model = initialize_mlp(**deepsets_config)
+        gnn_model = initialize_mlp(**deepsets_config, activation='lrelu')
     else:
         print("Train vanilla GNN")
         gnn_model = GNNModel(layer_type=layer_type, edge_dim=edge_dim, **gnn_config)
@@ -196,17 +211,18 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
     gnn_model.to(device)
 
     mlp=None
-    if siamese:
+    if siamese and not finetune:
         parameters = gnn_model.parameters()
         
     else:
         mlp_config = model_config['mlp']
+        print(mlp_config)
         if aggr == 'combine':
             mlp_config['input'] = mlp_config['input'] * 3
         elif aggr == 'concat':
             mlp_config['input'] = mlp_config['input'] * 2 
         elif aggr == 'sum+diff':
-            mlp_config['input'] = mlp_config['input'] * 2
+            mlp_config['input'] = gnn_config['output'] * 2
         elif aggr == 'sum+diff+vn':
             mlp_config['input'] = mlp_config['input'] * 3
         mlp_nn = initialize_mlp(**mlp_config, activation='lrelu')
@@ -227,7 +243,7 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
 
         print("finetuning from file:", prev_model_pth)
         model_info = torch.load(prev_model_pth, map_location=device)
-        if mlp:
+        if not siamese:
             mlp_parameters = model_info['mlp_state_dict']
             gnn_parameters = model_info['gnn_state_dict']
             
@@ -244,10 +260,10 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
             log_dir = os.path.join(log_dir, 'finetune/')
         
         
-        # parameters = mlp.parameters()
-        # for param in gnn_model.parameters():
-        #     param.requires_grad =False
-        # siamese = False
+        parameters = mlp.parameters()
+        for param in gnn_model.parameters():
+            param.requires_grad =False
+        siamese = False
     record_dir = os.path.join(log_dir, 'record/')
 
     optimizer = AdamW(parameters, lr=lr)
@@ -273,21 +289,33 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
     
     logging.info('training......')
     start = time.time()
-    
-    #test_graph = test_graph.to(device)
-    if not patch:
+    node_embeddings = None
+    vn_emb= None
+    if finetune:
+        gnn_model.to('cpu')
+        node_embeddings = gnn_model(graph_data.x, graph_data.edge_index, graph_data.edge_attr)
+        node_embeddings = node_embeddings.to(device)
+        torch.save(node_embeddings,'/data/sam/terrain/data/norway/norway-2k-embeddings.pt')
+    elif not patch:
         graph_data = graph_data.to(device)
+    
+    print(finetune == False or (finetune and node_embeddings == None))
+    optimizer.zero_grad()
+    
     for epoch in trange(epochs):
         total_loss = 0
         batch_count = 0
+        times = []
         for batch in train_dataloader:
-            optimizer.zero_grad()
+            
             if patch:
                 batch.to(device)
             else:
                 srcs = batch[0].to(device)
                 tars = batch[1].to(device)
                 lengths = batch[2].to(device)
+                l2 = batch[3].to(device)
+
             # node_features = node_features.to(device)
 
             # format patch data for CNN Layers
@@ -296,42 +324,45 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
                 batch.to(device)
             
             # edge_index = edge_index.to(device)
-            vn_emb= None
-            if aggr == 'sum+diff+vn' and layer_type != 'CNNLayer':
-                if patch:
-                    node_embeddings, vn_emb = gnn_model(batch.x, batch.edge_index, edge_attr=batch.edge_attr, batch=batch)
+            
+            if finetune == False or (finetune and node_embeddings == None):
+                if aggr == 'sum+diff+vn' and layer_type != 'CNNLayer':
+                    if patch:
+                        node_embeddings, vn_emb = gnn_model(batch.x, batch.edge_index, edge_attr=batch.edge_attr, batch=batch)
+                    else:
+                        node_embeddings, vn_emb =gnn_model(graph_data.x, graph_data.edge_index, edge_attr = graph_data.edge_attr)
+                elif aggr == 'sum+diff+vn' and layer_type == 'CNNLayer':
+                    if patch:
+                        graph_sz = int(np.sqrt(len(batch.x)/batch.num_graphs))
+                        cnn_input = batch.x.reshape(batch.num_graphs, graph_sz * graph_sz, 3).mT.reshape(batch.num_graphs, 3, graph_sz, graph_sz)
+                        node_embeddings, vn_emb = gnn_model(cnn_input, batch.edge_index, edge_attr=batch.edge_attr, batch=batch)
+                    else:
+                        node_embeddings, vn_emb =gnn_model(cnn_in, edge_index=None)
+                elif virtual_node:
+                    # node_embeddings = gnn_model(graph_data)
+                    node_embeddings = gnn_model(batch.x , batch.edge_index, edge_attr=batch.edge_attr, batch=batch) if patch else gnn_model(graph_data.x, graph_data.edge_index, edge_attr = graph_data.edge_attr)
+                elif layer_type == 'MLP':
+                    # node_embeddings = gnn_model(graph_data.x)
+                    node_embeddings = gnn_model(batch.x) if patch else gnn_model(graph_data.x)
+                elif isinstance(gnn_model, GNN_VN_Hierarchical):
+                    if patch:
+                        raise Exception("Not supported for patch datasets")
+                    node_embeddings = gnn_model(graph_data.x, graph_data.edge_index, hblocks, 1, hnum)
+                elif layer_type=='CNNLayer':
+                    if not patch:
+                        node_embeddings = gnn_model(cnn_in, edge_index = None)
+                    else:
+                        graph_sz = int(np.sqrt(len(batch.x)/batch.num_graphs))
+                        cnn_input = batch.x.reshape(batch.num_graphs, graph_sz * graph_sz, 3).mT.reshape(batch.num_graphs, 3, graph_sz, graph_sz)
+                        node_embeddings = gnn_model(cnn_input, edge_index=None, batch=batch.num_graphs)
+                elif layer_type == 'Transformer':
+                    transformer_input = graph_data.x.unsqueeze(dim=0)
+                    node_embeddings = gnn_model(transformer_input, edge_index=None)
                 else:
-                    node_embeddings, vn_emb =gnn_model(graph_data.x, graph_data.edge_index, edge_attr = graph_data.edge_attr)
-            elif aggr == 'sum+diff+vn' and layer_type == 'CNNLayer':
-                if patch:
-                    graph_sz = int(np.sqrt(len(batch.x)/batch.num_graphs))
-                    cnn_input = batch.x.reshape(batch.num_graphs, graph_sz * graph_sz, 3).mT.reshape(batch.num_graphs, 3, graph_sz, graph_sz)
-                    node_embeddings, vn_emb = gnn_model(cnn_input, batch.edge_index, edge_attr=batch.edge_attr, batch=batch)
-                else:
-                    node_embeddings, vn_emb =gnn_model(cnn_in, edge_index=None)
-            elif virtual_node:
-                # node_embeddings = gnn_model(graph_data)
-                node_embeddings = gnn_model(batch.x , batch.edge_index, edge_attr=batch.edge_attr, batch=batch) if patch else gnn_model(graph_data.x, graph_data.edge_index, edge_attr = graph_data.edge_attr)
-            elif layer_type == 'MLP':
-                # node_embeddings = gnn_model(graph_data.x)
-                node_embeddings = gnn_model(batch.x) if patch else gnn_model(graph_data.x)
-            elif isinstance(gnn_model, GNN_VN_Hierarchical):
-                if patch:
-                    raise Exception("Not supported for patch datasets")
-                node_embeddings = gnn_model(graph_data.x, graph_data.edge_index, hblocks, 1, hnum)
-            elif layer_type=='CNNLayer':
-                if not patch:
-                    node_embeddings = gnn_model(cnn_in, edge_index = None)
-                else:
-                    graph_sz = int(np.sqrt(len(batch.x)/batch.num_graphs))
-                    cnn_input = batch.x.reshape(batch.num_graphs, graph_sz * graph_sz, 3).mT.reshape(batch.num_graphs, 3, graph_sz, graph_sz)
-                    node_embeddings = gnn_model(cnn_input, edge_index=None, batch=batch.num_graphs)
-            else:
-                # node_embeddings = gnn_model(graph_data.x, graph_data.edge_index)
-                node_embeddings = gnn_model(batch.x, batch.edge_index, edge_attr=batch.edge_attr) if patch else gnn_model(graph_data.x, graph_data.edge_index, edge_attr = graph_data.edge_attr)
+                    node_embeddings = gnn_model(graph_data.x, graph_data.edge_index, edge_attr = graph_data.edge_attr)
 
+                    #node_embeddings = gnn_model(batch.x, batch.edge_index, edge_attr=batch.edge_attr) if patch else gnn_model(graph_data.x, graph_data.edge_index, edge_attr = graph_data.edge_attr)
             if siamese:
-                # pred = torch.norm(node_embeddings[srcs] - node_embeddings[tars], p=1, dim=1)
                 pred = torch.norm(node_embeddings[batch.src] - node_embeddings[batch.tar], p=p, dim=1) if patch else torch.norm(node_embeddings[srcs] - node_embeddings[tars], p=p, dim=1)
             else:
                 if not patch:
@@ -341,52 +372,18 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
                 pred = pred.squeeze()
 
             #loss = nrmse_loss(pred, lengths)
-            loss = globals()[loss_func](pred, batch.length) if patch else globals()[loss_func](pred, lengths)
+            if loss_func == 'weighted_mse_loss':
+                loss = globals()[loss_func](pred, lengths,l2 )
+                #print("time to compute loss:", end - start)
+            else:
+                loss = globals()[loss_func](pred, batch.length) if patch else globals()[loss_func](pred, lengths)
             total_loss += loss.detach()
             batch_count += 1
             loss.backward()
+
             optimizer.step()
 
-        if log:
-            if not patch:
-
-                if layer_type == 'GCN2Conv':
-                    test_node_embeddings = gnn_model(test_graph)
-                    train_node_embeddings = gnn_model(graph_data)
-                elif layer_type=='MLP':
-                    test_node_embeddings = gnn_model(test_graph.x)
-                    train_node_embeddings = gnn_model(graph_data.x)
-                elif isinstance(gnn_model, GNN_VN_Hierarchical):
-                    test_node_embeddings = gnn_model(test_graph.x, test_graph.edge_index, hblocks, 1, hnum)
-                    train_node_embeddings = gnn_model(graph_data.x, graph_data.edge_index, hblocks, 1, hnum)
-                elif layer_type == 'CNNLayer':
-                    test_node_embeddings = gnn_model(cnn_in, edge_index = None)
-                    train_node_embeddings = gnn_model(cnn_in, edge_index = None)
-                else:
-                    test_node_embeddings = gnn_model(test_graph.x, test_graph.edge_index)
-                    train_node_embeddings = gnn_model(graph_data.x, graph_data.edge_index)
-
-                val_loss = compute_validation_loss(test_node_embeddings, test_dataloader, mlp=mlp, device=device)
-                train_relative_loss = compute_validation_loss(train_node_embeddings, train_dataloader, mlp=mlp, device=device)
-            else:
-                val_loss = compute_patch_validation_loss(gnn_model, test_dataloader, mlp=mlp, device=device)
-                train_relative_loss = compute_patch_validation_loss(gnn_model, train_dataloader, mlp=mlp, device=device)
-                
-            if epoch == epochs - 1:
-                end = time.time()
-                logging.info(f'Trained in {end - start} seconds')
-                logging.info(f"epoch:{epoch} train loss:{(total_loss/batch_count).item()}")
-                logging.info(f"epoch:{epoch} test loss (relative error):{val_loss.item()}")
-                print("epoch:", epoch, "test loss (relative error):", val_loss)
-                print("epoch:", epoch, "train loss", train_relative_loss)
-                print("epoch:", epoch, "total epoch loss", total_loss/batch_count)
-                
-            writer.add_scalar('train/relative_loss', train_relative_loss, epoch)
-            writer.add_scalar('test/relative_loss', val_loss, epoch)
-            writer.add_scalars('test/generalization-relative', 
-                            {'val': val_loss, 
-                            'train': train_relative_loss}, 
-                            epoch)
+            optimizer.zero_grad()
         writer.add_scalar('train/mse_loss', total_loss/batch_count, epoch)
         # print(epoch,total_loss/batch_count )
         if epoch % save_freq == 0:
@@ -399,7 +396,6 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
                 torch.save({'gnn_state_dict':gnn_model.state_dict(), 
                             'mlp_state_dict': mlp.state_dict(),
                             'optimizer_state_dict':optimizer.state_dict()}, path)
-
     print("Final training loss:", total_loss/batch_count)
     logging.info(f'final training loss: {total_loss/batch_count}')
     if siamese:
@@ -412,188 +408,6 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
         torch.save({'gnn_state_dict':gnn_model.state_dict(), 
                     'mlp_state_dict': mlp.state_dict()}, path)
         return gnn_model, mlp
-
-
-
-def finetune_baseline(node_features, edge_index, train_dataloader, test_dataloader, 
-                    model_config, layer_type, epochs=100, loss_func='nrmse_loss',
-                    device='cuda:0', log_dir='/data/sam',
-                    lr=0.001, siamese=True, save_freq=50, virtual_node=False, 
-                    aggr='sum', patch=False, p=1,
-                    log=True, edge_attr = None):
-    
-    # initiate summary writer
-    
-    gnn_config = model_config['gnn']
-    if not patch:
-        edge_attr = torch.tensor(edge_attr) if edge_attr is not None else None
-        graph_data = Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr)
-    
-    # set edge dimensions
-    print(type(graph_data.edge_attr))
-    cnn_sz = int(np.sqrt(len(node_features)))
-
-    if layer_type=='CNNLayer':
-        feats = graph_data.x.numpy()
-        total_num_nodes = len(feats)
-        cnn_img =  feats.T.reshape(3, -1, total_num_nodes).swapaxes(0, 1).reshape(1, 3, cnn_sz, cnn_sz)
-        cnn_in = torch.tensor(cnn_img, device=device)
-    
-    edge_dim = 1 if isinstance(graph_data.edge_attr, torch.Tensor) else 0
-    # Add virtual node
-    if virtual_node:
-        gnn_model = GNN_VN_Model(batches=patch, layer_type=layer_type, edge_dim=edge_dim, **gnn_config)
-    # GCN2Conv 
-    elif layer_type == 'GCN2Conv':
-        gnn_model = GCN2Model(**gnn_config)
-        graph_data = sparse_tensor(graph_data)
-        test_graph = sparse_tensor(test_graph)
-    # Transformer
-    elif layer_type == 'Transformer':
-        gnn_model = GraphTransformer(**gnn_config)
-    # Add laplacian positional encodings to the transformer (k = 10 by default)
-    elif layer_type == 'Transformer-LPE':
-        print("Laplacian positional encodings")
-        graph_data = add_laplace_positional_encoding(graph_data, k=10)
-        test_graph = add_laplace_positional_encoding(test_graph, k=10)
-        gnn_config['input'] = graph_data.x.size()[1]
-        gnn_model=GraphTransformer(**gnn_config)
-    elif layer_type == "MLP":
-        deepsets_config = model_config['gnn']
-        gnn_model = initialize_mlp(**deepsets_config)
-    else:
-        print("Train vanilla GNN")
-        gnn_model = GNNModel(layer_type=layer_type, edge_dim=edge_dim, size=cnn_sz, **gnn_config)
-    
-    print("Sending model to GPU.....")
-    gnn_model = gnn_model.to(torch.double)
-    gnn_model.to(device)
-
-    mlp_config = model_config['mlp']
-    if aggr == 'combine':
-        mlp_config['input'] = mlp_config['input'] * 3
-    mlp_nn = initialize_mlp(**mlp_config, activation='lrelu')
-    mlp = MLPBaseline1(mlp_nn, aggr=aggr)
-    mlp.init_weights()
-    mlp = mlp.to(torch.double)
-    mlp.to(device)        
-    
-    
-    # if we finetune the model, we freeze the siamese layer and just train the MLP
-    # load previous model from log
-    
-    prev_model_pth = os.path.join(log_dir, 'final_model.pt')
-
-    print("finetuning from file:", prev_model_pth)
-    model_info = torch.load(prev_model_pth, map_location=device)
-
-    gnn_model.load_state_dict(model_info)
-
-    log_dir = os.path.join(log_dir, 'finetune/')
-    
-    
-    parameters = mlp.parameters()
-    for param in gnn_model.parameters():
-        param.requires_grad =False
-    siamese = False
-    record_dir = os.path.join(log_dir, 'record/')
-
-    optimizer = AdamW(parameters, lr=lr)
-    
-    if not os.path.exists(record_dir):
-        os.makedirs(record_dir)
-    print("logging losses and intermediary models to:", record_dir)
-    writer = SummaryWriter(log_dir=record_dir)
-
-    # initialize logger
-    log_file = os.path.join(record_dir, 'training_log.log')
-    logging.basicConfig(level=logging.INFO, filename=log_file)
-
-    logging.info(f'GNN layer: {layer_type}')
-    logging.info(f'Number of epochs: {epochs}')
-    logging.info(f'MLP aggregation: {aggr}')
-    logging.info(f'Siamese? {siamese}')
-    logging.info(f'loss function: {loss_func}')
-    logging.info(f'edge attributes?: {edge_attr != None}')
-
-    logging.info(gnn_model)
-    logging.info(mlp)
-    
-    logging.info('training......')
-    graph_data = graph_data.to(device)
-    # Computing all node_embeddings first 
-    # edge_index = edge_index.to(device)
-    if layer_type == 'GCN2Conv' or virtual_node:
-        # node_embeddings = gnn_model(graph_data)
-        node_embeddings = gnn_model(batch.x , batch.edge_index, edge_attr=batch.edge_attr, batch=batch) if patch else gnn_model(graph_data.x, graph_data.edge_index, edge_attr = graph_data.edge_attr)
-    elif layer_type == 'MLP':
-        # node_embeddings = gnn_model(graph_data.x)
-        node_embeddings = gnn_model(batch.x) if patch else gnn_model(graph_data.x)
-    elif layer_type=='CNNLayer':
-        node_embeddings = gnn_model(cnn_in, edge_index = None)
-    else:
-        # node_embeddings = gnn_model(graph_data.x, graph_data.edge_index)
-        node_embeddings = gnn_model(batch.x, batch.edge_index, edge_attr=batch.edge_attr) if patch else gnn_model(graph_data.x, graph_data.edge_index, edge_attr = graph_data.edge_attr)
-
-    start = time.time()
-    for epoch in trange(epochs):
-        total_loss = 0
-        batch_count = 0
-        for batch in train_dataloader:
-            optimizer.zero_grad()
-            
-            srcs = batch[0]
-            tars = batch[1]
-            lengths = batch[2]
-            pred = mlp(node_embeddings[srcs], node_embeddings[tars])
-            pred = pred.squeeze()
-
-            loss = globals()[loss_func](pred, lengths)
-            total_loss += loss.detach()
-            batch_count += 1
-            loss.backward()
-            optimizer.step()
-
-        if log:
-            val_loss = compute_validation_loss(node_embeddings, test_dataloader, mlp=mlp, device=device)
-            train_relative_loss = compute_validation_loss(node_embeddings, train_dataloader, mlp=mlp, device=device)
-            
-                
-            if epoch == epochs - 1:
-                end = time.time()
-                logging.info(f'Trained in {end - start} seconds')
-                logging.info(f"epoch:{epoch} train loss:{(total_loss/batch_count).item()}")
-                logging.info(f"epoch:{epoch} test loss (relative error):{val_loss.item()}")
-                print("epoch:", epoch, "test loss (relative error):", val_loss)
-                print("epoch:", epoch, "train loss", train_relative_loss)
-                print("epoch:", epoch, "total epoch loss", total_loss/batch_count)
-                
-            
-            writer.add_scalar('train/mse_loss', total_loss/batch_count, epoch)
-            writer.add_scalar('train/relative_loss', train_relative_loss, epoch)
-            writer.add_scalar('test/relative_loss', val_loss, epoch)
-        if epoch % save_freq == 0:
-            if siamese:
-                path = os.path.join(record_dir, f'model_{epoch}.pt')
-                torch.save({'gnn_state_dict': gnn_model.state_dict(),
-                            'optimizer_state_dict': optimizer.state_dict()}, path)
-            else:
-                path = os.path.join(record_dir, f'model_{epoch}.pt')
-                torch.save({'gnn_state_dict':gnn_model.state_dict(), 
-                            'mlp_state_dict': mlp.state_dict(),
-                            'optimizer_state_dict':optimizer.state_dict()}, path)
-
-
-    if siamese:
-        path = os.path.join(log_dir, 'final_model.pt')
-        print("saving model to:", path)
-        torch.save(gnn_model.state_dict(), path)
-        return gnn_model, val_loss
-    else:
-        path = os.path.join(log_dir, 'final_model.pt')
-        torch.save({'gnn_state_dict':gnn_model.state_dict(), 
-                    'mlp_state_dict': mlp.state_dict()}, path)
-        return gnn_model, mlp, val_loss
 
 
 

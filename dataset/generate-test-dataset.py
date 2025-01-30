@@ -95,12 +95,11 @@ def construct_nx_graph(xv, yv, elevation, triangles=False, p=2):
             for j in range(0, m - 1):
                 # index cell by top left coordinate
                 triangle_edge = [(counts[i, j], counts[i + 1, j + 1]), (counts[i + 1, j], counts[i, j + 1])]
-                edge = triangle_edge[np.random.choice(2)]
-                p1 = node_features[edge[0]]
-                p2 = node_features[edge[1]]
-                w = np.linalg.norm(p1 - p2, ord = p)
-                #ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], color='black')
-                G.add_edge(edge[0], edge[1], weight=w)
+                for edge in triangle_edge:
+                    p1 = node_features[edge[0]]
+                    p2 = node_features[edge[1]]
+                    w = np.linalg.norm(p1 - p2, ord = p)
+                    G.add_edge(edge[0], edge[1], weight=w)
     #fig.savefig('../images/norway-250.png')
     return G, node_features
 
@@ -168,10 +167,10 @@ def generate_src_tar_pairs(node_features, n, m, size=100, sampling_technique='ra
     elif sampling_technique == 'height-sensitive-random':
         node_features = np.array(node_features)
         sorted_height_array = np.argsort(node_features[:, 2])
-        num_srcs = 20
+        num_srcs = 10
         num_per_src = int(size//20)
         srcs = []
-        src_nodes = np.random.choice(sorted_height_array[-100:], size = num_srcs)
+        src_nodes = np.random.choice(sorted_height_array[-1000000:], size = num_srcs)
         for s in tqdm(src_nodes):
             tar_nodes = np.random.choice(len(node_features), size=num_per_src)
             for t in tar_nodes:
@@ -188,8 +187,13 @@ def single_src_dataset(G, node_features, filename, size=100):
     lengths = []
     srcs = []
     tars = []
-    for i in trange(size):
-        src = np.random.choice(num_nodes)
+    node_features = np.array(node_features)
+    sorted_height_array = np.argsort(node_features[:, 2])
+    num_srcs = 10
+    src_nodes = np.random.choice(sorted_height_array[-1000000:], size = num_srcs)
+    for i in trange(len(src_nodes)):
+        #src = np.random.choice(num_nodes)
+        src = src_nodes[i]
         all_pairs_shortest_paths = nx.single_source_dijkstra_path_length(G, src, weight='weight')
         for tar in all_pairs_shortest_paths:
             tars.append(tar)

@@ -20,6 +20,10 @@ echo "Experiment config: $1"
 echo "Trial: $2"
 
 eval $(parse_yaml $1)
+echo "Experiment config: $1"
+echo "Trial: $2"
+
+eval $(parse_yaml $1)
 echo "Training data: $train_data"
 echo "Testing data: $test_data"
 echo "Device: $device"
@@ -28,11 +32,12 @@ echo "VN? $vn"
 echo "layer type: $layer_type"
 echo "Aggr: $aggr"
 echo "p= $p"
+echo "loss = $loss"
 
-python train-finetune-MLP.py --train-data $train_data \
---test-data $test_data \
---epochs $epochs\
- --device $device \
+python train_single_dataset_coarse_to_refined.py --finetune-from $finetune_from \
+--train-data-files $train_data_files \
+--epochs $epochs \
+--device $device \
 --batch-size $batch_size \
 --dataset-name $dataset_name \
 --config $config \
@@ -41,6 +46,7 @@ python train-finetune-MLP.py --train-data $train_data \
 --layer-type $layer_type \
 --aggr $aggr \
 --p $p \
---finetune $finetune \
+--loss $loss \
+--uncertainty-model $uncertainty_model \
 --include-edge-attr $include_edge_attr \
 --trial $2

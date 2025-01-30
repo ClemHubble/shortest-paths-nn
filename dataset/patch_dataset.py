@@ -163,7 +163,7 @@ def construct_patch_dataset(xv, yv, dem_array, patch_size, sz, triangles=False, 
     print("size of dataset:", sz, "patch sizes:", patch_size)
     n = dem_array.shape[0]
     m = dem_array.shape[1]
-    nc = 10
+    nc = 40
     cx = np.random.choice(n-patch_size, size=nc, replace=False)
     cy = np.random.choice(m - patch_size, size=nc, replace=False)
     for i in range(nc):

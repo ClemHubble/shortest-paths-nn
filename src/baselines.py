@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import torch.nn as nn
-from torch_geometric.nn import GCNConv, GINConv, GATConv, GCN2Conv, TransformerConv, to_hetero, GeneralConv
+from torch_geometric.nn import GCNConv, GINConv, GATConv, GCN2Conv, TransformerConv, to_hetero, GeneralConv, GATv2Conv,GCN
 from torch.nn import ReLU, LeakyReLU, Sigmoid
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn import aggr 
@@ -14,6 +14,11 @@ from torch_geometric.nn import aggr
 # from torch_geometric.graphgym.register import register_network
 from torch_geometric.nn import global_add_pool
 import torch.nn.functional as F
+
+from torch_geometric.nn import MessagePassing
+from torch_geometric.utils import add_self_loops, softmax
+from torch_geometric.nn.inits import glorot, zeros
+
  
 # Baseline 0
 def initialize_mlp(input, hidden, output, layers, batch_norm=False, activation='relu', **kwargs):
@@ -125,6 +130,15 @@ class GINLayer(nn.Module):
         output = self.layer(x, edge_index)
         return output
 
+
+class GCNLayer(MessagePassing):
+    def __init__(self, input, output, edge_dim, aggr='add'):
+        super(GCNLayer, self).__init__(aggr=aggr)  # "add" aggregation
+        self.layer = GCN(input, output, num_layers=1)
+    
+    def forward(self, x, edge_index, edge_attr):
+        return self.layer(x, edge_index, edge_attr)
+
 class GeneralConvMaxAttention(nn.Module):
     def __init__(self, input=3, output=3, edge_dim=None):
         super(GeneralConvMaxAttention, self).__init__()
@@ -193,40 +207,6 @@ class CNNLayer(nn.Module):
     def forward(self, x, edge_index, edge_attr=None, batch=None):
         output = self.layer(x)
         return output
-
-"""
-Base GNN model - can take GATConv, GIN, GeneralConvMaxAttention
-and CNNLayer. Technically, CNNLayer is not a graph layer but it
-can work in this case because of how the terrain data is structured. 
-"""
-class GNNModel1(nn.Module):
-    def __init__(self, input=3, output=20, hidden=20, layers=2, 
-                 layer_type='GATConv', activation='LeakyReLU', size=25, **kwargs):
-        super(GNNModel1, self).__init__()
-        torch.manual_seed(1234567)
-        # Initialize the first layer
-        graph_layer = globals()[layer_type]
-        self.initial = graph_layer(input, hidden, size=size)
-        
-        # Initialize the subsequent layers
-        self.module_list = nn.ModuleList([graph_layer(hidden, hidden, size=size) for _ in range(layers - 1)])
-        
-        # Output layer
-        self.output = graph_layer(hidden, output)
-
-        # activation function
-        self.activation = globals()[activation]()
-
-    def forward(self, x, edge_index):
-        # x = data.x
-        # edge_index = data.edge_index
-        x = self.initial(x, edge_index)
-        x = self.activation(x)
-        for layer in self.module_list:
-            x = layer(x, edge_index)
-            x = self.activation(x)
-        x = self.output(x, edge_index)
-        return x
 
 '''
 
@@ -548,3 +528,18 @@ class GraphTransformer(torch.nn.Module):
         for conv, norm in zip(self.convs, self.norms):
             x = norm(conv(x, edge_index)).relu()
         return self.convs[-1](x, edge_index)
+
+class Transformer(torch.nn.Module):
+    def __init__(self, input, hidden, output, layers, heads=2, dropout=0.3, **kwargs):
+        super(Transformer, self).__init__()
+        # project to high dimensions
+        self.projection_layer = nn.Linear(in_features=input, out_features=hidden)
+        #self.module_list = nn.ModuleList([graph_layer(hidden, hidden, edge_dim=edge_dim) for _ in range(layers)])
+        self.layer = nn.TransformerEncoderLayer(d_model = input, nhead=heads, batch_first=True)
+        self.final_layer = nn.Linear(in_features=input, out_features=output)
+        self.activation = LeakyReLU()
+
+    def forward(self, x, edge_index):
+        out = self.activation(self.layer(x)).squeeze()
+        out = self.final_layer(out)
+        return out
