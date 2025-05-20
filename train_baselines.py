@@ -311,10 +311,10 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
             if patch:
                 batch.to(device)
             else:
-                srcs = batch[0].to(device)
-                tars = batch[1].to(device)
-                lengths = batch[2].to(device)
-                l2 = batch[3].to(device)
+                srcs = batch[0].to(device, non_blocking=True)
+                tars = batch[1].to(device, non_blocking=True)
+                lengths = batch[2].to(device, non_blocking=True)
+                l2 = batch[3].to(device, non_blocking=True)
 
             # node_features = node_features.to(device)
 

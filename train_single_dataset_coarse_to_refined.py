@@ -91,7 +91,7 @@ def main():
     else:
         finetuning_files = []
         for i in range(1, 60):
-            finetuning_files.append(f'{args.dataset_name}/uncertainty/250/50k-{i}')
+            finetuning_files.append(f'{args.dataset_name}/uncertainty/50/50k-{i}')
     for file in finetuning_files:
         for modelname in model_configs:
             #data_file =files[i]
@@ -111,10 +111,10 @@ def main():
             if args.include_edge_attr:
                 train_edge_attr = train_data['distances']
             print("Number of nodes:", len(train_node_features))
-            train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+            train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, pin_memory=True)
 
             test_dataset, test_node_features, test_edge_index = npz_to_dataset(test_data)
-            test_dataloader = DataLoader(test_dataset, batch_size = args.batch_size, shuffle=True)
+            test_dataloader = DataLoader(test_dataset, batch_size = args.batch_size, shuffle=True, pin_memory=True)
 
             # Load model configs
             

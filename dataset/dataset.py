@@ -233,7 +233,7 @@ def construct_pyg_dataset(G, node_features, filename, size=100, sampling_techniq
                 srcs = []
                 lengths = []
                 for s in tqdm(src_nodes):
-                    shortest_paths = nx.single_source_dijkstra_path_length(G, s, weight='weight', cutoff=15)
+                    shortest_paths = nx.single_source_dijkstra_path_length(G, s, weight='weight', cutoff=20)
                     for tar in shortest_paths:
                         srcs.append(s)
                         tars.append(tar)
@@ -241,6 +241,7 @@ def construct_pyg_dataset(G, node_features, filename, size=100, sampling_techniq
             else:
                 src_nodes = np.random.choice(len(node_features), size=n_srcs)
                 num_nodes = len(node_features)
+                print("number of nodes", num_nodes)
                 tars = []
                 srcs = []
                 lengths = []
@@ -309,12 +310,13 @@ def main():
         xv_n = xv[::res, ::res]
         yv_n = yv[::res, ::res]
         elevations_n = elevations[::res, ::res]
+        print(np.min(elevations_n))
         m = elevations_n.shape[1]
         print('terrain shape:', elevations_n.shape)
         print('resolution:', res)
         if args.change_heights:
             for k in range(1, 60):
-                filename = f'/data/sam/terrain/data/{args.name}/uncertainty/250/50k-{k}.npz'
+                filename = f'/data/sam/terrain/data/{args.name}/uncertainty/50/50k-{k}.npz'
                 uncertainty = np.random.uniform(-0.050, 0.050, size=elevations_n.shape)
                 elevations_n = uncertainty + elevations_n
                 
