@@ -30,7 +30,7 @@ echo "Aggr: $aggr"
 echo "p= $p"
 echo "loss = $loss"
 
-python train_single_dataset.py --train-data $train_data \
+python train_single_terrain_case.py --train-data $train_data \
 --test-data $test_data \
 --epochs $epochs\
  --device $device \

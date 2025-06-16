@@ -76,9 +76,27 @@ def nmae_loss(pred, target):
 def mse_loss(pred, target):
     return torch.mean(torch.square(pred - target))
 
+# MSE for sqrt distance
 def sqrt_distance(pred, target):
     sqrt_distance = torch.sqrt(target)
     return torch.mean(torch.square(pred - sqrt_distance))
+
+# MAE for sqrt distance
+def sqrt_distance_MAE(pred, target):
+    sqrt_distance = torch.sqrt(target)
+    return torch.mean(torch.abs(pred - sqrt_distance))
+
+def squared_distance_prediction_MSE(pred, target):
+    return torch.mean(torch.square(torch.square(pred) - target))
+
+def squared_distance_prediction_MAE(pred, target):
+    return torch.mean(torch.abs(torch.square(pred) - target))
+
+def square_distance_tar_MSE(pred, target):
+    return torch.mean(torch.square(pred - torch.square(target)))
+
+def square_distance_tar_MAE(pred, target):
+    return torch.mean(torch.abs(pred - torch.square(target)))
 
 def compute_validation_loss(node_embeddings, dataloader, mlp=None, device='cuda:0'):
     total = 0
@@ -202,9 +220,17 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
     elif layer_type == "MLP":
         deepsets_config = model_config['gnn']
         gnn_model = initialize_mlp(**deepsets_config, activation='lrelu')
+        print(gnn_model)
+    elif layer_type == 'SiLUMLP':
+        deepsets_config = model_config['gnn']
+        gnn_model = initialize_mlp(**deepsets_config, activation='silu')
+        print(gnn_model)
+    elif layer_type == 'NewMLP':
+        deepsets_config = model_config['gnn']
+        gnn_model = NewMLP(**deepsets_config)
     else:
         print("Train vanilla GNN")
-        gnn_model = GNNModel(layer_type=layer_type, edge_dim=edge_dim, **gnn_config)
+        gnn_model = GNNModel(layer_type=layer_type, edge_dim=edge_dim, activation='SiLU',layer_norm=True, **gnn_config)
     
     print("Sending model to GPU.....")
     gnn_model = gnn_model.to(torch.double)
@@ -225,9 +251,10 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
             mlp_config['input'] = gnn_config['output'] * 2
         elif aggr == 'sum+diff+vn':
             mlp_config['input'] = mlp_config['input'] * 3
-        mlp_nn = initialize_mlp(**mlp_config, activation='lrelu')
+        #mlp_nn = initialize_mlp(**mlp_config, activation='lrelu')
+        mlp_nn = NewMLP(**mlp_config)
         mlp = MLPBaseline1(mlp_nn, aggr=aggr)
-        mlp.init_weights()
+        # mlp.init_weights()
         mlp = mlp.to(torch.double)
         mlp.to(device)
 
@@ -293,7 +320,10 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
     vn_emb= None
     if finetune:
         gnn_model.to('cpu')
-        node_embeddings = gnn_model(graph_data.x, graph_data.edge_index, graph_data.edge_attr)
+        if isinstance(gnn_model, NewMLP):
+            node_embeddings = gnn_model(graph_data.x)
+        else:
+            node_embeddings = gnn_model(graph_data.x, graph_data.edge_index, graph_data.edge_attr)
         node_embeddings = node_embeddings.to(device)
         torch.save(node_embeddings,'/data/sam/terrain/data/norway/norway-2k-embeddings.pt')
     elif not patch:
@@ -341,9 +371,10 @@ def train_single_graph_baseline1(node_features, edge_index, train_dataloader,
                 elif virtual_node:
                     # node_embeddings = gnn_model(graph_data)
                     node_embeddings = gnn_model(batch.x , batch.edge_index, edge_attr=batch.edge_attr, batch=batch) if patch else gnn_model(graph_data.x, graph_data.edge_index, edge_attr = graph_data.edge_attr)
-                elif layer_type == 'MLP':
+                elif layer_type == 'MLP' or layer_type == 'NewMLP' or layer_type == 'SiLUMLP':
                     # node_embeddings = gnn_model(graph_data.x)
                     node_embeddings = gnn_model(batch.x) if patch else gnn_model(graph_data.x)
+                
                 elif isinstance(gnn_model, GNN_VN_Hierarchical):
                     if patch:
                         raise Exception("Not supported for patch datasets")

@@ -110,7 +110,6 @@ def load_models(model_dictionary, file, trials = ['1', '2', '3', '4', '5'], fine
                 else:
                     mlp_model=None
                 if layer_type=='MLP':
-
                     cfg_mlp = model_configs[name]['gnn']
                     gnn_model = initialize_mlp(**cfg_mlp)
                 elif layer_type == 'Transformer':

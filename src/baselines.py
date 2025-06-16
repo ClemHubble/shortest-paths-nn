@@ -3,9 +3,10 @@ import torch.nn.functional as F
 import numpy as np
 import torch.nn as nn
 from torch_geometric.nn import GCNConv, GINConv, GATConv, GCN2Conv, TransformerConv, to_hetero, GeneralConv, GATv2Conv,GCN
-from torch.nn import ReLU, LeakyReLU, Sigmoid
+from torch.nn import ReLU, LeakyReLU, Sigmoid, SiLU
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn import aggr 
+from torch_geometric.nn.norm import LayerNorm
 
 # import torch_geometric.graphgym.models.head  # noqa, register module
 # import torch_geometric.graphgym.register as register
@@ -18,6 +19,61 @@ import torch.nn.functional as F
 from torch_geometric.nn import MessagePassing
 from torch_geometric.utils import add_self_loops, softmax
 from torch_geometric.nn.inits import glorot, zeros
+
+def get_coords(batch):
+    graph = batch[3]
+    source_coord = graph.pos[batch[0]]
+    target_coord = graph.pos[batch[1]]
+    return source_coord, target_coord
+
+class LinearLayer(nn.Module):
+    def __init__(self, input_dim, out_dim, add_norm=True):
+        super().__init__()
+        self.linear = nn.Linear(input_dim, out_dim)
+        if add_norm:
+            self.norm = nn.LayerNorm(out_dim)
+    
+    def forward(self, x):
+        x = self.linear(x)
+        if hasattr(self, "norm"):
+            x = self.norm(x)
+        return F.silu(x)
+
+class NewMLP(nn.Module):
+    def __init__(self, input, output, hidden, layers, add_norm=True, edge_dim=None):
+        input_dim = input 
+        out_dim = output
+        hid_dim = hidden
+        n_layers = layers
+        super().__init__()
+        self.layers = nn.ModuleList(
+            [LinearLayer(input_dim, hid_dim, add_norm)] +
+            [LinearLayer(hid_dim, hid_dim, add_norm) for _ in range(n_layers - 2)]
+        )
+        self.out_proj = nn.Linear(hid_dim, out_dim)
+    
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return self.out_proj(x)
+
+ 
+class MLPShortestPath(nn.Module):
+    def __init__(self, input, output, hidden, layers):
+        super().__init__()
+        self.backbone = MLP(input_dim=input, out_dim=output, hid_dim=hidden, n_layers=layers)
+
+    def forward(self, batch):
+        # return loss
+        pred = self.predict(batch)
+        #loss = F.mse_loss(pred, batch[2])
+        return pred
+
+    # def predict(self, batch):   
+    #     queries = torch.cat(get_coords(batch))
+    #     src_emb, tar_emb = self.backbone(queries).chunk(2, dim=0)
+    #     pred = torch.norm(src_emb - tar_emb, p=1, dim=-1)
+    #     return pred 
 
  
 # Baseline 0
@@ -32,6 +88,8 @@ def initialize_mlp(input, hidden, output, layers, batch_norm=False, activation='
         func = nn.Sigmoid
     elif activation =='softplus':
         func = nn.Softplus
+    elif activation == 'silu':
+        func = nn.SiLU
     else:
         raise NameError('Not implemented')
 
@@ -216,7 +274,7 @@ New and improved version of graph neural network with a linear output layer.
 class GNNModel(nn.Module):
     def __init__(self, input=3, output=20, hidden=20, layers=2, 
                  layer_type='GATConv', activation='LeakyReLU',
-                 edge_dim=None, **kwargs):
+                 edge_dim=None, layer_norm=False, **kwargs):
         super(GNNModel, self).__init__()
 
         # Initialize the first layer
@@ -235,6 +293,8 @@ class GNNModel(nn.Module):
 
         self.layer_type = layer_type
         self.hidden_channels = hidden
+        if layer_norm:
+            self.norm = LayerNorm(hidden)
 
     def forward(self, x, edge_index, edge_attr=None, batch=None):
         # x = data.x
@@ -245,6 +305,8 @@ class GNNModel(nn.Module):
         for layer in self.module_list:
             x = layer(x, edge_index, edge_attr=edge_attr)
             x = self.activation(x)
+            if hasattr(self, 'norm'):
+                x = self.norm(x)
         if self.layer_type=='CNNLayer':
             num_nodes = x.size()[2]**2 if batch == None else x.size()[0] * x.size()[2] * x.size()[3]
             cnn_bsz = 1 if batch == None else batch

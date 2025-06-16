@@ -18,35 +18,9 @@ import yaml
 import os
 import csv
 
-from train_baselines import *
+from refactor_training import *
 
 output_dir = '/data/sam/terrain/'
-
-
-def format_log_dir(output_dir, 
-                   dataset_name, 
-                   siamese, 
-                   modelname, 
-                   vn, 
-                   aggr, 
-                   loss_func, 
-                   layer_type,
-                   p,
-                   trial):
-    log_dir = os.path.join(output_dir, 
-                           'models',
-                           'single_dataset', 
-                           dataset_name, 
-                           layer_type,
-                           'vn' if vn else 'no-vn',
-                           'siamese' if siamese else 'mlp',
-                           f'p-{p}')
-    if not siamese:
-        log_dir = os.path.join(log_dir, aggr)
-    log_dir = os.path.join(log_dir, loss_func, modelname, trial)
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-    return log_dir
 
 
 def main():
@@ -76,27 +50,11 @@ def main():
     finetune=True if args.finetune == 1 else False
     trial = args.trial
 
-    #trials = ['1']
-    
-
-    # files = ['edge-weight-50k-constrained-0.npz', 
-    #          'edge-weight-50k-constrained-1.npz', 
-    #          'edge-weight-50k-constrained-2.npz', 
-    #          'edge-weight-50k-constrained-3.npz',
-    #          'edge-weight-50k-constrained-4.npz']
-    # trials = [args.trial]
-    amps = [1.0, 2.0, 4.0, 6.0, 8.0, 9.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0]
-    
-    #trial = trials[0]
     with open(args.config, 'r') as file:
         model_configs = yaml.safe_load(file)
-    # amps=[1.0]
+
     for modelname in model_configs:
-        #data_file =files[i]
-    
-        # Load data 
         train_file = os.path.join(output_dir, 'data', f'{args.train_data}.npz')
-        #train_file = os.path.join(output_dir, 'data', f'{args.train_data}', f'amp-{amp}-res-{RES}-train-50k.npz')
         print("Training file", train_file)
         test_file = os.path.join(output_dir, 'data', args.test_data)
         
@@ -114,10 +72,6 @@ def main():
 
         test_dataset, test_node_features, test_edge_index = npz_to_dataset(test_data)
         test_dataloader = DataLoader(test_dataset, batch_size = args.batch_size, shuffle=False)
-
-        # Load model configs
-        
-        
         loss_data = []
         
         log_dir = format_log_dir(output_dir, 
@@ -134,12 +88,21 @@ def main():
         config=model_configs[modelname]
         print(modelname, config)
 
-        #finetune_file = os.path.join(log_dir, )
-        output = train_single_graph_baseline1(train_node_features, train_edge_index, train_dataloader, 
-                                            test_node_features, test_edge_index, test_dataloader,layer_type=args.layer_type, 
-                                            loss_func=args.loss, model_config = config, epochs=args.epochs, device=args.device,
-                                            siamese=siamese, log_dir=log_dir, virtual_node=vn, aggr=aggr, lr=args.lr, p=args.p, 
-                                            log=False, finetune=finetune, edge_attr=train_edge_attr)
+        train_single_terrain_e2e(node_features = train_node_features, 
+                                 edge_index = train_edge_index, 
+                                 train_dataloader = train_dataloader,
+                                 model_config = config,
+                                 layer_type = args.layer_type,
+                                 device = args.device,
+                                 epochs = args.epochs,
+                                 lr= args.lr,
+                                 aggr = aggr, 
+                                 log_dir=log_dir,
+                                 p = args.p,
+                                 edge_attr = train_edge_attr,
+                                 layer_norm=True)
     
 if __name__=='__main__':
     main()
+
+

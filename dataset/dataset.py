@@ -11,7 +11,11 @@ import itertools
 import argparse
 import os
 
-DATASET_INFO = {'norway': [10, False], 'phil': [3, True], 'holland': [1.524, True], 'la': [28.34, False], 'artificial': [10/50, False]}
+DATASET_INFO = {'norway': [10, False], 
+                'phil': [3, True], 
+                'holland': [1.524, True], 
+                'la': [28.34, False], 
+                'artificial': [10/50, False]}
 
 # Load DEM data from file, 
 # outputs elevations in meters
