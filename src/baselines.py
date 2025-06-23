@@ -58,26 +58,8 @@ class NewMLP(nn.Module):
         return self.out_proj(x)
 
  
-class MLPShortestPath(nn.Module):
-    def __init__(self, input, output, hidden, layers):
-        super().__init__()
-        self.backbone = MLP(input_dim=input, out_dim=output, hid_dim=hidden, n_layers=layers)
-
-    def forward(self, batch):
-        # return loss
-        pred = self.predict(batch)
-        #loss = F.mse_loss(pred, batch[2])
-        return pred
-
-    # def predict(self, batch):   
-    #     queries = torch.cat(get_coords(batch))
-    #     src_emb, tar_emb = self.backbone(queries).chunk(2, dim=0)
-    #     pred = torch.norm(src_emb - tar_emb, p=1, dim=-1)
-    #     return pred 
-
- 
 # Baseline 0
-def initialize_mlp(input, hidden, output, layers, batch_norm=False, activation='relu', **kwargs):
+def initialize_mlp(input, hidden, output, layers, dropout=True, layer_norm=True, activation='relu', **kwargs):
     if layers == 1:
         hidden=output
     if activation == 'relu':
@@ -95,16 +77,19 @@ def initialize_mlp(input, hidden, output, layers, batch_norm=False, activation='
 
     phi_layers= []
     phi_layers.append(nn.Linear(input, hidden))
+    if layer_norm:
+        phi_layers.append(nn.LayerNorm(hidden))
+    if dropout:
+        phi_layers.append(nn.Dropout(p=0.30))
     phi_layers.append(func())
-    if batch_norm:
-        phi_layers.append(nn.BatchNorm1d(input))
     for i in range(layers - 1):
         if i < layers - 2:
-            phi_layers.append(nn.Dropout(p=0.30))
             phi_layers.append(nn.Linear(hidden, hidden))
+            if layer_norm:
+                phi_layers.append(nn.LayerNorm(hidden))
+            if dropout:
+                phi_layers.append(nn.Dropout(p=0.30))
             phi_layers.append(func())
-            if batch_norm:
-                phi_layers.append(nn.BatchNorm1d(hidden))
         else:
             phi_layers.append(nn.Linear(hidden, output))
 

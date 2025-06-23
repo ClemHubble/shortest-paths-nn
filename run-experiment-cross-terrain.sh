@@ -27,12 +27,13 @@ echo "Siamese? $siamese"
 echo "VN? $vn"
 echo "layer type: $layer_type"
 echo "Aggr: $aggr"
-echo "Loss: $loss"
+echo "p= $p"
+echo "loss = $loss"
 
-python train_single_dataset_patch.py --train-data $train_data \
+python train-cross-terrain.py --train-data $train_data \
 --test-data $test_data \
---epochs $epochs \
---device $device \
+--epochs $epochs\
+ --device $device \
 --batch-size $batch_size \
 --dataset-name $dataset_name \
 --config $config \
@@ -40,7 +41,9 @@ python train_single_dataset_patch.py --train-data $train_data \
 --vn $vn \
 --layer-type $layer_type \
 --aggr $aggr \
---loss $loss \
---include-edge-attr $include_edge_attr \
 --p $p \
+--loss $loss \
+--finetune-from $finetune_from \
+--include-edge-attr $include_edge_attr \
+--lr $lr \
 --trial $2

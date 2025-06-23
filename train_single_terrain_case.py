@@ -73,7 +73,13 @@ def main():
         test_dataset, test_node_features, test_edge_index = npz_to_dataset(test_data)
         test_dataloader = DataLoader(test_dataset, batch_size = args.batch_size, shuffle=False)
         loss_data = []
-        
+
+        edge_attr = torch.tensor(train_edge_attr)
+        edge_attr = edge_attr.unsqueeze(-1)
+        edge_dim = 1
+        graph_data = Data(x=train_node_features, edge_index=train_edge_index, edge_attr=edge_attr)        
+        train_dictionary = {'graphs': graph_data, 'dataloaders': [train_dataloader]}
+
         log_dir = format_log_dir(output_dir, 
                                 args.dataset_name, 
                                 siamese, 
@@ -88,19 +94,19 @@ def main():
         config=model_configs[modelname]
         print(modelname, config)
 
-        train_single_terrain_e2e(node_features = train_node_features, 
-                                 edge_index = train_edge_index, 
-                                 train_dataloader = train_dataloader,
-                                 model_config = config,
-                                 layer_type = args.layer_type,
-                                 device = args.device,
-                                 epochs = args.epochs,
-                                 lr= args.lr,
-                                 aggr = aggr, 
-                                 log_dir=log_dir,
-                                 p = args.p,
-                                 edge_attr = train_edge_attr,
-                                 layer_norm=True)
+        train_few_cross_terrain_case(train_dictionary=train_dictionary,
+                                    model_config = config,
+                                    layer_type = args.layer_type,
+                                    device = args.device,
+                                    epochs = args.epochs,
+                                    lr= args.lr,
+                                    loss_func=args.loss,
+                                    aggr = aggr, 
+                                    log_dir=log_dir,
+                                    p = args.p,
+                                    layer_norm=True,
+                                    siamese=siamese,
+                                    finetune_from=finetune_from)
     
 if __name__=='__main__':
     main()
