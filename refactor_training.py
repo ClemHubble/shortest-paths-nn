@@ -66,7 +66,7 @@ def npz_to_dataset(data):
     node_features = torch.tensor(data['node_features'], dtype=torch.double)
     l2 = torch.norm(node_features[srcs] - node_features[tars], dim=1, p=2)
 
-    train_dataset = SingleGraphShortestPathDataset(srcs, tars, lengths, l2)
+    train_dataset = SingleGraphShortestPathDataset(srcs, tars, lengths)
 
     return train_dataset, node_features, edge_index
 
@@ -97,14 +97,20 @@ def format_log_dir(output_dir,
 
 
 def configure_embedding_module(model_config, 
-                               layer_type, 
-                               activation='lrelu', 
-                               edge_dim=1, 
-                               layer_norm=True):
+                               layer_type,
+                               edge_dim=1,
+                               new=True):
     print(model_config)
-    embedding_config = model_config['gnn']
-    if layer_type == 'MLP' or layer_type=='SiLUMLP':
-        embedding_module = initialize_mlp(**embedding_config, activation=activation)
+    print(new)
+    embedding_config = model_config['constr']
+    layer_norm = model_config['layer_norm']
+    dropout = model_config['dropout']
+    activation = model_config['activation']
+    if not new:
+        embedding_module = initialize_mlp(**embedding_config, 
+                                          activation=activation, 
+                                          layer_norm=layer_norm, 
+                                          dropout=dropout)
     elif layer_type == 'NewMLP':
         embedding_module = NewMLP(**embedding_config, add_norm=layer_norm)
     else:
@@ -116,22 +122,22 @@ def configure_embedding_module(model_config,
     return embedding_module
 
     
-def configure_mlp_module(mlp_config, aggr='sum', layer_norm=True, dropout=True, old=False):
+def configure_mlp_module(mlp_config, aggr='sum', new=True):
     print(mlp_config)
+    layer_norm=mlp_config['layer_norm']
+    dropout=mlp_config['dropout']
     if aggr == 'combine':
         mlp_config['input'] = mlp_config['input'] * 3
     elif aggr == 'concat' or aggr == 'sum+diff':
         mlp_config['input'] = mlp_config['input'] * 2 
-    if old:
+    if not new:
         mlp_nn = initialize_mlp(**mlp_config, layer_norm=layer_norm, dropout=dropout)
     else:
         mlp_nn = NewMLP(**mlp_config, add_norm=layer_norm)
     mlp = MLPBaseline1(mlp_nn, aggr=aggr)
     return mlp
 
-def train_single_terrain_frozen(node_features, 
-                                edge_index, 
-                                train_dataloader,
+def train_single_terrain_frozen(train_dictionary,
                                 model_config, 
                                 layer_type, 
                                 device,
@@ -142,28 +148,25 @@ def train_single_terrain_frozen(node_features,
                                 loss_func='mse_loss',
                                 lr =0.001,
                                 log_dir='/data/sam',
-                                siamese=True,
                                 p=1, 
                                 aggr='sum',
                                 edge_attr=None, 
-                                layer_norm=True):
+                                layer_norm=True, 
+                                **kwargs):
     
-    edge_attr = torch.tensor(edge_attr) if edge_attr is not None else None
-    edge_attr = edge_attr.unsqueeze(-1)
-    edge_dim = 1 if edge_attr is not None else 0
-    graph_data = Data(x = node_features, edge_index=edge_index, edge_attr=edge_attr)
 
     embedding_config = model_config['gnn']
-    embedding_module = configure_embedding_module(model_config, 
+    embedding_module = configure_embedding_module(embedding_config, 
                                                  layer_type, 
                                                  activation=activation, 
                                                  edge_dim=edge_dim, 
                                                  layer_norm=layer_norm)
-    print("Loading from:", prev_model_pth)
-    embedding_model_state = torch.load(prev_model_pth, map_location='cpu')
+    
+    prev_model_state_pth = os.path.join(prev_model_pth, 'final_model.pt')
+    print("Loading from:", prev_model_state_pth)
+    embedding_model_state = torch.load(prev_model_state_pth, map_location='cpu')
     embedding_module.load_state_dict(embedding_model_state)
     embedding_module.to(torch.double)
-    embedding_module.to(device)
     
     print(model_config)
     print(embedding_module)
@@ -172,7 +175,68 @@ def train_single_terrain_frozen(node_features,
     mlp = mlp.to(torch.double)
     mlp.to(device)
 
+    parameters = mlp.parameters()
+    for param in embedding_module.parameters():
+        param.requires_grad =False
+    
+    ## Pre-process all datasets
+    num_graphs = len(train_dictionary['graphs'])
+    train_dictionary['embeddings'] = []
 
+    for i in range(num_graphs):
+        graph_data = train_dictionary['graphs'][i]
+        if 'MLP' in layer_type:
+            node_embeddings = embedding_module(graph_data.x)
+        else:
+            node_embeddings = embedding_module(graph_data.x, graph_data.edge_index, edge_attr = graph_data.edge_attr)
+        
+        train_dictionary['embeddings'].append(node_embeddings)
+        
+    record_dir = os.path.join(prev_model_pth, finetune_dataset_name)
+    if not os.path.exists(record_dir):
+        os.makedirs(record_dir)
+
+    log_file = os.path.join(record_dir, 'training_log.log')
+    logging.basicConfig(level=logging.INFO, filename=log_file)
+
+    logging.info(f'GNN layer: {layer_type}')
+    logging.info(f'Number of epochs: {epochs}')
+    logging.info(f'MLP aggregation: {aggr}')
+    logging.info(f'Siamese? {siamese}')
+    logging.info(f'loss function: {loss_func}')
+
+    optimizer = AdamW(parameters, lr=lr)
+
+    for epoch in trange(epochs):
+        total_loss = 0
+        for i in range(num_graphs):
+            embeddings = train_dictionary['embeddings'][i]
+            dataloader = train_dictionary['dataloaders'][i]
+            for batch in dataloader:
+                srcs = batch[0]
+                tars = batch[1]
+                embd_srcs = embeddings[srcs].to(device, non_blocking=True)
+                embd_tars = embeddings[tars].to(device, non_blocking=True)
+                lengths = batch[2].to(device, non_blocking=True)
+
+                pred = mlp(src_embeddings, tar_embeddings, vn_emb=None)
+
+                loss = globals()[loss_func](pred, lengths)
+                loss.backward()
+
+                optimizer.step()
+                optimizer.zero_grad()
+                total_loss += loss.detach()
+            wandb.log({'train_loss': loss})
+
+    logging.info(f'final training loss:{total_loss}')
+    print("Final training loss:", total_loss)
+        
+    path = os.path.join(record_dir, 'final_model.pt')
+    print("saving model to:", path)
+    torch.save({'gnn_state_dict':embedding_module.state_dict(), 
+                'mlp_state_dict': mlp.state_dict()}, path)
+    return embedding_module, mlp
 
 
 # train_dictionary = {'graphs': [g1, g2, g3, ....], 'dataloaders': [dl1, dl2, ....]}
@@ -188,16 +252,15 @@ def train_few_cross_terrain_case(train_dictionary,
                                 siamese=True,
                                 p=1, 
                                 aggr='sum',
-                                layer_norm=True,
+                                new=False,
                                 finetune_from=None):
     num_graphs = len(train_dictionary['graphs'])
     edge_dim = 1
     embedding_config = model_config['gnn']
-    embedding_module = configure_embedding_module(model_config, 
+    embedding_module = configure_embedding_module(embedding_config, 
                                                  layer_type, 
-                                                 activation=activation, 
-                                                 edge_dim=edge_dim, 
-                                                 layer_norm=layer_norm)
+                                                 edge_dim=edge_dim,
+                                                 new=new)
     if finetune_from:
         embedding_model_state = torch.load(finetune_from, map_location='cpu')
         embedding_module.load_state_dict(embedding_model_state)
@@ -205,8 +268,6 @@ def train_few_cross_terrain_case(train_dictionary,
     embedding_module.to(torch.double)
     embedding_module.to(device)
     
-    print(model_config)
-    print(embedding_module)
     
     # if isinstance(embedding_module, GNNModel):
     record_dir = os.path.join(log_dir, 'record/')
@@ -222,8 +283,7 @@ def train_few_cross_terrain_case(train_dictionary,
             "learning_rate": lr,
             "epochs": epochs,
             "siamese": siamese,
-            "p": p, 
-            "layer_norm": layer_norm
+            "p": p
         }
     )
 
@@ -231,7 +291,7 @@ def train_few_cross_terrain_case(train_dictionary,
     if siamese:
         parameters = embedding_module.parameters()
     else:
-        mlp = configure_mlp_module(model_config['mlp'], aggr=aggr, layer_norm=False)
+        mlp = configure_mlp_module(model_config['mlp'], aggr=aggr, new=new)
         mlp = mlp.to(torch.double)
         mlp.to(device)
         if finetune_from:
@@ -267,7 +327,7 @@ def train_few_cross_terrain_case(train_dictionary,
                 tars = batch[1].to(device, non_blocking=True)
                 lengths = batch[2].to(device, non_blocking=True)
 
-                if isinstance(embedding_module, NewMLP):
+                if 'MLP' in layer_type:
                     src_embeddings = embedding_module(graph_data.x[srcs])
                     tar_embeddings = embedding_module(graph_data.x[tars])
                 else:

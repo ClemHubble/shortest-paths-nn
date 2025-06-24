@@ -42,12 +42,15 @@ def main():
     parser.add_argument('--p', type=int, default=1 )
     parser.add_argument('--finetune', type=int, default=0)
     parser.add_argument('--include-edge-attr', type=int, default=0)
+    parser.add_argument('--new', action='store_true')
+    parser.add_argument('--finetune-from', type=str, default='none')
 
     args = parser.parse_args()
     siamese = True if args.siamese == 1 else False
     vn = True if args.vn == 1 else False 
     aggr = args.aggr
     finetune=True if args.finetune == 1 else False
+    finetune_from=None if args.finetune_from == 'none' else args.finetune_from
     trial = args.trial
 
     with open(args.config, 'r') as file:
@@ -78,7 +81,7 @@ def main():
         edge_attr = edge_attr.unsqueeze(-1)
         edge_dim = 1
         graph_data = Data(x=train_node_features, edge_index=train_edge_index, edge_attr=edge_attr)        
-        train_dictionary = {'graphs': graph_data, 'dataloaders': [train_dataloader]}
+        train_dictionary = {'graphs': [graph_data], 'dataloaders': [train_dataloader]}
 
         log_dir = format_log_dir(output_dir, 
                                 args.dataset_name, 
@@ -104,7 +107,6 @@ def main():
                                     aggr = aggr, 
                                     log_dir=log_dir,
                                     p = args.p,
-                                    layer_norm=True,
                                     siamese=siamese,
                                     finetune_from=finetune_from)
     

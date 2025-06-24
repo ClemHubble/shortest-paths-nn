@@ -43,6 +43,7 @@ def main():
     parser.add_argument('--finetune', type=int, default=0)
     parser.add_argument('--finetune-from', type=str, default='none')
     parser.add_argument('--include-edge-attr', type=int, default=0)
+    parser.add_argument('--new', action='store_true')
 
     args = parser.parse_args()
     siamese = True if args.siamese == 1 else False
@@ -77,7 +78,7 @@ def main():
         
         config=model_configs[modelname]
         print(modelname, config)
-        
+
         
         train_few_cross_terrain_case(train_dictionary=train_dictionary,
                                     model_config = config,
@@ -89,9 +90,9 @@ def main():
                                     aggr = aggr, 
                                     log_dir=log_dir,
                                     p = args.p,
-                                    layer_norm=True,
                                     siamese=siamese,
-                                    finetune_from=finetune_from)
+                                    finetune_from=finetune_from,
+                                    new=args.new)
     
 if __name__=='__main__':
     main()
