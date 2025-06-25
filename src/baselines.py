@@ -62,15 +62,15 @@ class NewMLP(nn.Module):
 def initialize_mlp(input, hidden, output, layers, dropout=True, layer_norm=True, activation='relu', **kwargs):
     if layers == 1:
         hidden=output
-    if activation == 'relu':
+    if activation == 'relu' or activation == 'ReLU':
         func = nn.ReLU
-    elif activation =='lrelu':
+    elif activation =='lrelu' or activation == 'LeakyReLU':
         func = nn.LeakyReLU
     elif activation=='sigmoid':
         func = nn.Sigmoid
     elif activation =='softplus':
         func = nn.Softplus
-    elif activation == 'silu':
+    elif activation == 'silu' or activation == 'SiLU':
         func = nn.SiLU
     else:
         raise NameError('Not implemented')

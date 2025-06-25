@@ -124,16 +124,17 @@ def configure_embedding_module(model_config,
     
 def configure_mlp_module(mlp_config, aggr='sum', new=True):
     print(mlp_config)
+    model_config = mlp_config['constr']
     layer_norm=mlp_config['layer_norm']
     dropout=mlp_config['dropout']
     if aggr == 'combine':
-        mlp_config['input'] = mlp_config['input'] * 3
+        model_config['input'] = model_config['input'] * 3
     elif aggr == 'concat' or aggr == 'sum+diff':
-        mlp_config['input'] = mlp_config['input'] * 2 
+        model_config['input'] = model_config['input'] * 2 
     if not new:
-        mlp_nn = initialize_mlp(**mlp_config, layer_norm=layer_norm, dropout=dropout)
+        mlp_nn = initialize_mlp(**model_config, layer_norm=layer_norm, dropout=dropout)
     else:
-        mlp_nn = NewMLP(**mlp_config, add_norm=layer_norm)
+        mlp_nn = NewMLP(**model_config, add_norm=layer_norm)
     mlp = MLPBaseline1(mlp_nn, aggr=aggr)
     return mlp
 
