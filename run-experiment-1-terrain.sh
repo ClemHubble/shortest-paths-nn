@@ -18,8 +18,12 @@ function parse_yaml {
 
 echo "Experiment config: $1"
 echo "Trial: $2"
+CONFIG=$1
+TRIAL=$2
 
-eval $(parse_yaml $1)
+shift 2
+
+eval $(parse_yaml $CONFIG)
 echo "Training data: $train_data"
 echo "Testing data: $test_data"
 echo "Device: $device"
@@ -29,6 +33,8 @@ echo "layer type: $layer_type"
 echo "Aggr: $aggr"
 echo "p= $p"
 echo "loss = $loss"
+
+
 
 python train_single_terrain_case.py --train-data $train_data \
 --test-data $test_data \
@@ -46,4 +52,5 @@ python train_single_terrain_case.py --train-data $train_data \
 --finetune $finetune \
 --include-edge-attr $include_edge_attr \
 --lr $lr \
---trial $2
+--trial $TRIAL \
+"$@"

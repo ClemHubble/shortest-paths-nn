@@ -22,6 +22,8 @@ from refactor_training import *
 
 output_dir = '/data/sam/terrain/'
 
+def prepare_single_terrain_dataset():
+    return 
 
 def main():
     parser = argparse.ArgumentParser()
@@ -40,10 +42,11 @@ def main():
     parser.add_argument('--layer-type', type=str)
     parser.add_argument('--trial', type=str)
     parser.add_argument('--p', type=int, default=1 )
-    parser.add_argument('--finetune', type=int, default=0)
+    parser.add_argument('--finetune-from', type=str, default='none')
     parser.add_argument('--include-edge-attr', type=int, default=0)
     parser.add_argument('--new', action='store_true')
-    parser.add_argument('--finetune-from', type=str, default='none')
+    parser.add_argument('--single-terrain', action='store_true')
+
 
     args = parser.parse_args()
     siamese = True if args.siamese == 1 else False
@@ -53,37 +56,18 @@ def main():
     finetune_from=None if args.finetune_from == 'none' else args.finetune_from
     trial = args.trial
 
-
     with open(args.config, 'r') as file:
         model_configs = yaml.safe_load(file)
 
     for modelname in model_configs:
-        train_file = os.path.join(output_dir, 'data', f'{args.train_data}.npz')
+        train_file = os.path.join(output_dir, 'data', f'{args.train_data}.pt')
         print("Training file", train_file)
         test_file = os.path.join(output_dir, 'data', args.test_data)
         
-
-        train_data = np.load(train_file, allow_pickle=True)
-        test_data = np.load(test_file, allow_pickle=True)
-
-        train_dataset, train_node_features, train_edge_index = npz_to_dataset(train_data)
-
-        train_edge_attr = None 
-        if args.include_edge_attr:
-            train_edge_attr = train_data['distances']
-        print("Number of nodes:", len(train_node_features))
-        train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-
-        test_dataset, test_node_features, test_edge_index = npz_to_dataset(test_data)
-        test_dataloader = DataLoader(test_dataset, batch_size = args.batch_size, shuffle=False)
-        loss_data = []
-
-        edge_attr = torch.tensor(train_edge_attr)
-        edge_attr = edge_attr.unsqueeze(-1)
-        edge_dim = 1
-        graph_data = Data(x=train_node_features, edge_index=train_edge_index, edge_attr=edge_attr)        
-        train_dictionary = {'graphs': [graph_data], 'dataloaders': [train_dataloader]}
-
+        train_data = torch.load(train_file)
+        train_dictionary = {'graphs': train_data['graphs'], 'dataloaders': []}
+        for dataset in train_data['datasets']:
+            train_dictionary['dataloaders'].append(DataLoader(dataset, batch_size = args.batch_size, shuffle=True))
         log_dir = format_log_dir(output_dir, 
                                 args.dataset_name, 
                                 siamese, 
@@ -97,7 +81,9 @@ def main():
         
         config=model_configs[modelname]
         print(modelname, config)
+        h()
 
+        
         train_few_cross_terrain_case(train_dictionary=train_dictionary,
                                     model_config = config,
                                     layer_type = args.layer_type,

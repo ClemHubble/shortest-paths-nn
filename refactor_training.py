@@ -106,17 +106,17 @@ def configure_embedding_module(model_config,
     layer_norm = model_config['layer_norm']
     dropout = model_config['dropout']
     activation = model_config['activation']
-    if not new:
+    if not new and 'MLP' in layer_type:
         embedding_module = initialize_mlp(**embedding_config, 
                                           activation=activation, 
                                           layer_norm=layer_norm, 
                                           dropout=dropout)
-    elif layer_type == 'NewMLP':
+    elif 'MLP' in layer_type:
         embedding_module = NewMLP(**embedding_config, add_norm=layer_norm)
     else:
         embedding_module = GNNModel(layer_type=layer_type, 
                                     edge_dim=edge_dim, 
-                                    activation='SiLU', 
+                                    activation=activation, 
                                     layer_norm=layer_norm, 
                                     **embedding_config)
     return embedding_module
@@ -267,8 +267,7 @@ def train_few_cross_terrain_case(train_dictionary,
         log_dir = os.path.join(log_dir, 'finetune/')
     embedding_module.to(torch.double)
     embedding_module.to(device)
-    
-    
+    print(embedding_module)    
     # if isinstance(embedding_module, GNNModel):
     record_dir = os.path.join(log_dir, 'record/')
     if not os.path.exists(record_dir):
@@ -316,6 +315,7 @@ def train_few_cross_terrain_case(train_dictionary,
     logging.info(f'MLP aggregation: {aggr}')
     logging.info(f'Siamese? {siamese}')
     logging.info(f'loss function: {loss_func}')
+    print("logging to....", record_dir)
 
     for epoch in trange(epochs):
         total_loss = 0

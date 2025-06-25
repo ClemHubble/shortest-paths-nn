@@ -56,7 +56,7 @@ def main():
     with open(args.config, 'r') as file:
         model_configs = yaml.safe_load(file)
 
-    for modelname in model_configs:
+    for modelname in model_configs: 
         train_file = os.path.join(output_dir, 'data', f'{args.train_data}.pt')
         print("Training file", train_file)
         test_file = os.path.join(output_dir, 'data', args.test_data)
