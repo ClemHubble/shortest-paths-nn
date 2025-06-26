@@ -17,12 +17,15 @@ By including layer normalization and `SiLU` activation with the GAT siamese embe
 
 This flag will basically turn on layer normalization, switch the activation to `SiLU` as opposed to `LeakyReLU`, and turn off dropout for the MLP layer only. To switch on layer normalization and change the activation for the GNN embedding modules, you can change them directly in the model configuration yaml. 
 
-We include our updated results below:
+We include our updated results below (note that new GAT results use layers which incorporate layer normalization and SiLU activation):
 ### Artificial terrain results
 
 
 ### Norway-250 results
-
+| **Method**      | **Relative error (%)** | **Absolute error (m)** |
+|:----------------|:-----------------:|----------------:|
+| MLP+$L_1$       | 0.71 $\pm$ 0.82   |  64.1 $\pm$ 53.8  |
+| GAT+$L_1$       | 0.59 $\pm$ 0.81   | 48.2 $\pm$ 41.8   |
 
 ### All results for real terrains
 

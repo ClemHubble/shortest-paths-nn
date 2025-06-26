@@ -127,6 +127,7 @@ def configure_mlp_module(mlp_config, aggr='sum', new=True):
     model_config = mlp_config['constr']
     layer_norm=mlp_config['layer_norm']
     dropout=mlp_config['dropout']
+    print(mlp_config)
     if aggr == 'combine':
         model_config['input'] = model_config['input'] * 3
     elif aggr == 'concat' or aggr == 'sum+diff':
@@ -155,13 +156,11 @@ def train_single_terrain_frozen(train_dictionary,
                                 layer_norm=True, 
                                 **kwargs):
     
-
+    edge_dim=1
     embedding_config = model_config['gnn']
     embedding_module = configure_embedding_module(embedding_config, 
                                                  layer_type, 
-                                                 activation=activation, 
-                                                 edge_dim=edge_dim, 
-                                                 layer_norm=layer_norm)
+                                                 edge_dim=edge_dim)
     
     prev_model_state_pth = os.path.join(prev_model_pth, 'final_model.pt')
     print("Loading from:", prev_model_state_pth)
@@ -176,7 +175,6 @@ def train_single_terrain_frozen(train_dictionary,
     mlp = mlp.to(torch.double)
     mlp.to(device)
 
-    parameters = mlp.parameters()
     for param in embedding_module.parameters():
         param.requires_grad =False
     
@@ -203,10 +201,20 @@ def train_single_terrain_frozen(train_dictionary,
     logging.info(f'GNN layer: {layer_type}')
     logging.info(f'Number of epochs: {epochs}')
     logging.info(f'MLP aggregation: {aggr}')
-    logging.info(f'Siamese? {siamese}')
     logging.info(f'loss function: {loss_func}')
 
-    optimizer = AdamW(parameters, lr=lr)
+    run = wandb.init(
+        project='terrains',
+        dir='/data/sam/wandb',
+        config={
+            "learning_rate": lr,
+            "epochs": epochs,
+            "p": p,
+            "previous model path": prev_model_pth
+        }
+    )
+
+    optimizer = AdamW(mlp.parameters(), lr=lr)
 
     for epoch in trange(epochs):
         total_loss = 0
@@ -220,7 +228,7 @@ def train_single_terrain_frozen(train_dictionary,
                 embd_tars = embeddings[tars].to(device, non_blocking=True)
                 lengths = batch[2].to(device, non_blocking=True)
 
-                pred = mlp(src_embeddings, tar_embeddings, vn_emb=None)
+                pred = mlp(embd_srcs, embd_tars, vn_emb=None)
 
                 loss = globals()[loss_func](pred, lengths)
                 loss.backward()
@@ -228,9 +236,9 @@ def train_single_terrain_frozen(train_dictionary,
                 optimizer.step()
                 optimizer.zero_grad()
                 total_loss += loss.detach()
-            wandb.log({'train_loss': loss})
+            wandb.log({'train_loss': loss/len(srcs)})
 
-    logging.info(f'final training loss:{total_loss}')
+    logging.info(f'final training loss:{total_loss/(num_graphs*len(dataloader.dataset))}')
     print("Final training loss:", total_loss)
         
     path = os.path.join(record_dir, 'final_model.pt')

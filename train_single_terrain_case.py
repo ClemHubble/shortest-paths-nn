@@ -74,6 +74,7 @@ def main():
         dataset_names = [args.dataset_name]
         train_data_pths = [os.path.join(output_dir, 'data', f'{args.train_data}.npz')]
         num_datasets = 1
+    
     for i in range(num_datasets):
         dataset_name = dataset_names[i]
         train_data_pth = train_data_pths[i]

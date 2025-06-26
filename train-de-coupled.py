@@ -22,7 +22,7 @@ from refactor_training import *
 
 output_dir = '/data/sam/terrain/'
 
-def prepare_single_terrain_dataset(train_data):
+def prepare_single_terrain_dataset(train_data, batch_size):
 
     train_dataset, train_node_features, train_edge_index = npz_to_dataset(train_data)
 
@@ -30,8 +30,8 @@ def prepare_single_terrain_dataset(train_data):
     edge_attr = torch.tensor(train_edge_attr)
     edge_attr = edge_attr.unsqueeze(-1)
     graph_data = Data(x=train_node_features, edge_index=train_edge_index, edge_attr=edge_attr) 
-    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    print(graph_data)
     return graph_data, train_dataloader
 
 def get_artificial_datasets(res=2):
@@ -71,10 +71,10 @@ def main():
 
 
     args = parser.parse_args()
+
     siamese = True if args.siamese == 1 else False
     vn = True if args.vn == 1 else False 
     aggr = args.aggr
-    finetune=True if args.finetune == 1 else False
     finetune_from=None if args.finetune_from == 'none' else args.finetune_from
     trial = args.trial
 
@@ -84,47 +84,52 @@ def main():
         dataset_names, train_data_pths = get_artificial_datasets(res=1)
         num_datasets = len(dataset_names)
     else:
-        dataset_names = [args.dataset_names]
+        dataset_names = [args.dataset_name]
         train_data_pths = [os.path.join(output_dir, 'data', f'{args.train_data}.npz')]
         num_datasets = 1
 
-    for modelname in model_configs:
-        train_file = os.path.join(output_dir, 'data', f'{args.train_data}.pt')
-        print("Training file", train_file)
-        test_file = os.path.join(output_dir, 'data', args.test_data)
-        
-        train_data = torch.load(train_file)
-        train_dictionary = {'graphs': train_data['graphs'], 'dataloaders': []}
-        for dataset in train_data['datasets']:
-            train_dictionary['dataloaders'].append(DataLoader(dataset, batch_size = args.batch_size, shuffle=True))
-        log_dir = format_log_dir(output_dir, 
-                                args.dataset_name, 
-                                siamese, 
-                                modelname, 
-                                vn, 
-                                aggr, 
-                                args.loss, 
-                                args.layer_type,
-                                args.p,
-                                args.trial)
-        
-        config=model_configs[modelname]
-        print(modelname, config)
-        print(log_dir)
+    for i in range(len(dataset_names)):
+        dataset_name = dataset_names[i]
+        train_data_pth = train_data_pths[i]
+        for modelname in model_configs:
+            
+            if args.single_terrain:
+                train_data = np.load(train_data_pth)
+                graph_data, train_dataloader = prepare_single_terrain_dataset(train_data, args.batch_size)
+                train_dictionary = {'graphs': [graph_data], 'dataloaders': [train_dataloader]}
+            else:
+                train_data = torch.load(train_data_pth)
+                train_dictionary = {'graphs': train_data['graphs'], 'dataloaders': []}
+                for dataset in train_data['datasets']:
+                    train_dictionary['dataloaders'].append(DataLoader(dataset, batch_size = args.batch_size, shuffle=True))
+            log_dir = format_log_dir(output_dir, 
+                                    args.dataset_name, 
+                                    siamese, 
+                                    modelname, 
+                                    vn, 
+                                    aggr, 
+                                    args.loss, 
+                                    args.layer_type,
+                                    args.p,
+                                    args.trial)
+            
+            config=model_configs[modelname]
+            print(modelname, config)
+            print(log_dir)
 
-        
-        train_single_terrain_frozen(train_dictionary = train_dictionary,
-                                    model_config = config, 
-                                    layer_type = args.layer_type, 
-                                    device = args.device,
-                                    prev_model_pth = args.finetune_from,
-                                    finetune_dataset_name = dataset_name,
-                                    epochs=args.epochs, 
-                                    loss_func=args.loss,
-                                    lr =args.lr,
-                                    log_dir=log_dir,
-                                    p=args.p, 
-                                    aggr=aggr)
+            
+            train_single_terrain_frozen(train_dictionary = train_dictionary,
+                                        model_config = config, 
+                                        layer_type = args.layer_type, 
+                                        device = args.device,
+                                        prev_model_pth = args.finetune_from,
+                                        finetune_dataset_name = dataset_name,
+                                        epochs=args.epochs, 
+                                        loss_func=args.loss,
+                                        lr =args.lr,
+                                        log_dir=log_dir,
+                                        p=args.p, 
+                                        aggr=aggr)
     
 if __name__=='__main__':
     main()
