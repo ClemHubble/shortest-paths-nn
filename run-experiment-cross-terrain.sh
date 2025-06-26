@@ -17,9 +17,12 @@ function parse_yaml {
 }
 
 echo "Experiment config: $1"
-echo "Trial: $2"
+CONFIG=$1
+TRIAL=$2
 
-eval $(parse_yaml $1)
+shift 2
+
+eval $(parse_yaml $CONFIG)
 echo "Training data: $train_data"
 echo "Testing data: $test_data"
 echo "Device: $device"
@@ -46,4 +49,5 @@ python train-cross-terrain.py --train-data $train_data \
 --finetune-from $finetune_from \
 --include-edge-attr $include_edge_attr \
 --lr $lr \
---trial $2
+--trial $TRIAL \
+"$@"
