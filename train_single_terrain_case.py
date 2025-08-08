@@ -87,6 +87,7 @@ def main():
             train_data = np.load(train_data_pth, allow_pickle=True)
             test_data = np.load(test_file, allow_pickle=True)
 
+            #train_dataset, train_node_features, train_edge_index = debug_dataset(train_data, n=100)
             train_dataset, train_node_features, train_edge_index = npz_to_dataset(train_data)
 
             train_edge_attr = None 
@@ -94,10 +95,6 @@ def main():
                 train_edge_attr = train_data['distances']
             print("Number of nodes:", len(train_node_features))
             train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-
-            test_dataset, test_node_features, test_edge_index = npz_to_dataset(test_data)
-            test_dataloader = DataLoader(test_dataset, batch_size = args.batch_size, shuffle=False)
-            loss_data = []
 
             edge_attr = torch.tensor(train_edge_attr)
             edge_attr = edge_attr.unsqueeze(-1)

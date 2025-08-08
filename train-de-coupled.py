@@ -50,7 +50,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset-name', type=str, help='Needed to construct output directory')
     parser.add_argument('--train-data', type=str)
-    parser.add_argument('--test-data', type=str)
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--config', type=str, default='configs/config-base.yml')
     parser.add_argument('--device', type=str)
@@ -63,10 +62,10 @@ def main():
     parser.add_argument('--layer-type', type=str)
     parser.add_argument('--trial', type=str)
     parser.add_argument('--p', type=int, default=1 )
-    parser.add_argument('--finetune-from', type=str, default='none')
+    parser.add_argument('--finetune-from', type=str, nargs='+')
     parser.add_argument('--include-edge-attr', type=int, default=0)
     parser.add_argument('--new', action='store_true')
-    parser.add_argument('--single-terrain', action='store_true')
+    parser.add_argument('--single-terrain-per-model', action='store_true')
     parser.add_argument('--artificial', action='store_true')
 
 
@@ -75,11 +74,14 @@ def main():
     siamese = True if args.siamese == 1 else False
     vn = True if args.vn == 1 else False 
     aggr = args.aggr
-    finetune_from=None if args.finetune_from == 'none' else args.finetune_from
     trial = args.trial
 
     with open(args.config, 'r') as file:
         model_configs = yaml.safe_load(file)
+
+    # If we are working with artificial datasets, get artificial dataset names. 
+    # Train all artificial datasets sequentially together. This tends to be fast so it is 
+    # easy to throw into a for-loop for training.  
     if args.artificial:
         dataset_names, train_data_pths = get_artificial_datasets(res=1)
         num_datasets = len(dataset_names)
@@ -91,9 +93,11 @@ def main():
     for i in range(len(dataset_names)):
         dataset_name = dataset_names[i]
         train_data_pth = train_data_pths[i]
+        prev_model_file_pth = args.finetune_from[i]
         for modelname in model_configs:
-            
-            if args.single_terrain:
+
+            # Provide train set dataloaders 
+            if args.single_terrain_per_model:
                 train_data = np.load(train_data_pth)
                 graph_data, train_dataloader = prepare_single_terrain_dataset(train_data, args.batch_size)
                 train_dictionary = {'graphs': [graph_data], 'dataloaders': [train_dataloader]}
@@ -102,34 +106,23 @@ def main():
                 train_dictionary = {'graphs': train_data['graphs'], 'dataloaders': []}
                 for dataset in train_data['datasets']:
                     train_dictionary['dataloaders'].append(DataLoader(dataset, batch_size = args.batch_size, shuffle=True))
-            log_dir = format_log_dir(output_dir, 
-                                    args.dataset_name, 
-                                    siamese, 
-                                    modelname, 
-                                    vn, 
-                                    aggr, 
-                                    args.loss, 
-                                    args.layer_type,
-                                    args.p,
-                                    args.trial)
+            
             
             config=model_configs[modelname]
             print(modelname, config)
-            print(log_dir)
-
+            model_to_finetune_from_pth = prev_model_file_pth.replace('<modelname>', modelname)
             
-            train_single_terrain_frozen(train_dictionary = train_dictionary,
-                                        model_config = config, 
-                                        layer_type = args.layer_type, 
-                                        device = args.device,
-                                        prev_model_pth = args.finetune_from,
-                                        finetune_dataset_name = dataset_name,
-                                        epochs=args.epochs, 
-                                        loss_func=args.loss,
-                                        lr =args.lr,
-                                        log_dir=log_dir,
-                                        p=args.p, 
-                                        aggr=aggr)
+            train_terrains_decoupled(train_dictionary = train_dictionary,
+                                    model_config = config, 
+                                    layer_type = args.layer_type, 
+                                    device = args.device,
+                                    prev_model_pth = model_to_finetune_from_pth,
+                                    finetune_dataset_name = dataset_name,
+                                    epochs=args.epochs, 
+                                    loss_func=args.loss,
+                                    lr =args.lr,
+                                    p=args.p, 
+                                    aggr=aggr)
     
 if __name__=='__main__':
     main()

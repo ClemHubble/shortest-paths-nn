@@ -1,12 +1,28 @@
 # Repository for "De-coupled NeuroGF for Shortest Path Distance Approximation on Large Scale Terrain Graphs"
 This is the corresponding repository for ""De-coupled NeuroGF for Shortest Path Distance Approximation on Large Scale Terrain Graphs" (S. Chen, P. K. Agarwal, Y. Wang, ICML 2025). 
+
 ### Dependencies
 This repository depends on PyTorch and PyTorch Geometric. All code should be compatible with the latest versions of each package.
 
-### Running 
-In order to run the experiments, we use the following bash script.
+## Running 
+Experiment configurations can be found in the `experiment-configs` folder and the model configurations used can be found in the `model-configs` folder. 
+
+### Single terrain model
+In order to run the experiments for the *single terrain* case, we use the following bash script.
+
 `./run-experiment-1-terrain.sh <experiment-config-here> <trial>`
-All experimental configurations can be found in the `experiment-configs` folder and the model configurations used can be found in the `model-configs` folder. 
+
+
+### Cross terrain model
+We recently extended our code to be able to handle training over multiple terrains. For our cross terrain case, we train each terrain sequentially per epoch. Training over multiple terrain graphs can be done using the following bash script: 
+
+`./run-experiment-cross-terrain.sh <experiment-config-here> <trial>`
+
+### De-coupled model
+To run the de-coupled experiments, you can use another bash script. I used two separate ones for de-coupled/non de-coupled training in order to do quick changes/experiments but be warned that there's a lot duplication. There are two additional flags I use for this experiment (recently implement): `--single-terrain-per-model` and `--artificial`. If you want to train a de-coupled model on a *single* terrain, please use the `--single-terrain-per-model` flag. Otherwise, leave it out if you want to train on several different terrains at once (the cross-terrain case).
+
+`./run-experiment-de-coupled.sh <experiment-config-here> <trial> --flag1 --flag2`.
+
 
 ## Updated MLP 06/20/2025
 In our original experiments and paper, we reported results using an MLP with `LeakyReLU` as the activation function, no layer normalization, and per-layer dropout of 0.30. However, we found that we are actually able to boost the performance of just the MLP layer by using the `SiLU` activation function, layer normalization, and no dropout. 

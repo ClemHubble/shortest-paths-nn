@@ -35,9 +35,8 @@ echo "p= $p"
 echo "loss = $loss"
 
 python train-de-coupled.py --train-data $train_data \
---test-data $test_data \
---epochs $epochs\
- --device $device \
+--epochs $epochs \
+--device $device \
 --batch-size $batch_size \
 --dataset-name $dataset_name \
 --config $config \

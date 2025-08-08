@@ -32,7 +32,7 @@ def npz_to_dataset(data):
 
     return srcs, tars, lengths, node_features, edge_index, edge_weights
 
-def generate_train_data(train_file_name, cnn_sz):
+def generate_train_data(train_file_name):
     data = np.load(train_file_name, allow_pickle=True)
     train_srcs, train_tars, train_lengths, node_features, edge_index, edge_weights = npz_to_dataset(data)
     
@@ -42,14 +42,6 @@ def generate_train_data(train_file_name, cnn_sz):
         v1 = edge_index[0][i].item()
         v2 = edge_index[1][i].item()
         G[v1][v2]['weight'] = graph_data.edge_attr[i].item()
-    ## Load CNN information
-    cnn_img = None
-    if cnn_sz == None:
-        feats = node_features
-
-        total_num_nodes = len(node_features)
-        cnn_img =  feats.T.reshape(3, -1, total_num_nodes).swapaxes(0, 1).reshape(1, 3, cnn_sz, cnn_sz)
-        cnn_img = torch.tensor(cnn_img)
 
     test_info = {'graph': graph_data, 
                  'nx_graph': G,
