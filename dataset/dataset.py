@@ -10,6 +10,7 @@ import itertools
 
 import argparse
 import os
+from point_sampler import * 
 
 DATASET_INFO = {'norway': [10, False], 
                 'phil': [3, True], 
@@ -92,9 +93,16 @@ def get_dem_xv_yv_(arr, resolution, visualize=True):
     return xv/1000, yv/1000, arr/1000
 
     
-# Construct grid
+# Construct grid with both cross edges
 def get_array_neighbors_(x, y, left=0, right=500, radius=1):
-    temp = [(x - radius, y), (x + radius, y), (x, y - radius), (x, y + radius)]
+    temp = [(x - radius, y), 
+            (x + radius, y), 
+            (x, y - radius), 
+            (x, y + radius), 
+            (x - radius, y - radius), 
+            (x - radius, y + radius), 
+            (x + radius, y - radius), 
+            (x+radius, y + radius)]
     neighbors = temp.copy()
 
     for val in temp:
@@ -139,25 +147,8 @@ def construct_nx_graph(xv, yv, elevation, triangles=False, p=2, scale=False):
                 #ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], color='black')
                 idx2 = counts[neighbor[0], neighbor[1]]
                 G.add_edge(idx1, idx2, weight=w)
-    print("Size of graph:", len(node_features))
-    if triangles:
-        for i in trange(0, n - 1):
-            for j in range(0, m - 1):
-                # index cell by top left coordinate
-                triangle_edge = [(counts[i, j], counts[i + 1, j + 1]), (counts[i + 1, j], counts[i, j + 1])]
-                edge = triangle_edge[np.random.choice(2)]
-                for edge in triangle_edge:
-                    p1 = node_features[edge[0]]
-                    p2 = node_features[edge[1]]
-                    if scale:
-                        angle_of_elevation = np.abs(np.arctan(p1[2] - p2[2])/np.linalg.norm(p2[:2] - p1[:2], ord=2))
-                        slope = (abs(p1[2] - p2[2]))/(abs(p1[0] - p2[0]) + abs(p1[1] - p2[1]))
-                        val = angle_of_elevation
-                        w = (1 + val) * np.linalg.norm(p1 - p2, ord=p)
-                    else:
-                        w = np.linalg.norm(p1 - p2, ord = p)
-                    G.add_edge(edge[0], edge[1], weight=w)
-    #fig.savefig('../images/norway-250.png')
+    print("Number of nodes:", len(node_features))
+    print("Number of edges:", G.number_of_edges())
     print(G.edges(0))
     return G, node_features
 
@@ -185,96 +176,51 @@ def generate_probabilities(N, m):
         probabilities.append(1/(hops**2) if hops > 0 else 1)
     return all_pairs, probabilities
 
-def construct_pyg_dataset(G, node_features, filename, size=100, sampling_technique='distance-based', m=10, p=0.10):
-    Nodes = np.sort(list(G.nodes()))
 
+def construct_dataset(G,
+                      node_features, 
+                      filename, 
+                      sampling_method, 
+                      num_srcs, 
+                      samples_per_source, 
+                      rows=100, 
+                      cols=100, 
+                      threshhold=0.2):
     edges, distances = to_pyg_graph(G)
     
+    if sampling_method == 'single-source-random':
+        src_nodes = np.random.choice(len(node_features), size=num_srcs)
+        sampling_fn = random_sampling
+    elif sampling_method == 'critical-point-source':
+        node_features = np.array(node_features)
+        c1 = node_features[:, 0].reshape(rows, cols)
+        c2 = node_features[:, 1].reshape(rows, cols)
+        c3 = node_features[:, 2].reshape(rows, cols)
+        terrain = torch.tensor(np.stack([c1, c2, c3]), dtype=torch.float)
+        terrain = np.transpose(terrain, (1, 2, 0))
+        print(terrain.size())
+        src_nodes = find_critical_points(terrain, threshhold)
+        sampling_fn = random_sampling
+    elif sampling_method == 'distance-based':
+        src_nodes = np.random.choice(len(node_features), size=num_srcs)
+        sampling_fn = distance_based
+    else:
+        raise NotImplementedError("please choose between 'single-source-random', 'critical-point-source', 'distance-based'")
     srcs = []
     tars = []
     lengths = []
-    print("Generating shortest paths......")
-    #jobs = []
-    #pool = mp.Pool(processes=20)
-    node_idxs = np.reshape(np.arange(m * m), (m, m))
-    lst= np.arange(len(node_features))
-    print(sampling_technique)
-    for i in trange(size):
-        if sampling_technique == 'distance-based':
-            src = np.random.choice(len(node_features))
-            hops = abs(src//m - lst//m) + abs(src % m - lst % m)+ 1
-            probs = 1/hops
-            probs = probs/np.linalg.norm(probs, ord=1)
-            tar = np.random.choice(len(node_features), p = probs)
-        elif sampling_technique == 'constrained-125x125':
-            src = np.random.choice(len(node_features))
-            src_row = src//m
-            src_col = src %m 
-            if np.random.uniform(low=0.0, high=1.0) <= p:
-                tar = np.random.choice(len(node_features))
-            else:
-                b1 = 0 if src_row -125  < 0 else src_row - 125
-                b2 = 0 if src_col - 125 < 0 else src_col - 125
-                #print(b1, src_row + 25, b2, src_col + 25, node_idxs[b1 : src_row + 25, b2: src_col+25].flatten())
-                tar = np.random.choice(node_idxs[b1 : src_row + 125, b2: src_col+125].flatten())
-        elif sampling_technique == 'constrained-25x25':
-            src = np.random.choice(len(node_features))
-            src_row = src//m
-            src_col = src %m 
-            p = np.random.uniform(low=0.0, high=1.0)
-            if p > 1.0:
-                tar = np.random.choice(len(node_features))
-            else:
-                b1 = 0 if src_row -25  < 0 else src_row - 25
-                b2 = 0 if src_col - 25 < 0 else src_col - 25
-                tar = np.random.choice(node_idxs[b1 : src_row + 25, b2: src_col+25].flatten())
-        elif sampling_technique == 'ss-random':
-            n_srcs = 1000
-            num_tars = size // n_srcs
-            if 'test' in filename:
-                src_nodes = np.random.choice(len(node_features), size=1000)
-                tars = []
-                srcs = []
-                lengths = []
-                for s in tqdm(src_nodes):
-                    shortest_paths = nx.single_source_dijkstra_path_length(G, s, weight='weight', cutoff=20)
-                    for tar in shortest_paths:
-                        srcs.append(s)
-                        tars.append(tar)
-                        lengths.append(shortest_paths[tar])
-            else:
-                src_nodes = np.random.choice(len(node_features), size=n_srcs)
-                num_nodes = len(node_features)
-                print("number of nodes", num_nodes)
-                tars = []
-                srcs = []
-                lengths = []
-
-                for s in tqdm(src_nodes):
-                    shortest_paths = nx.single_source_dijkstra_path_length(G, s, weight='weight')
-                    for i in range(num_tars):
-                        t = np.random.choice(num_nodes)
-                        srcs.append(s)
-                        tars.append(t)
-                        lengths.append(shortest_paths[t])
-
-            break
-        else:
-            src, tar = np.random.choice(len(node_features), [2, ], replace=False)
-        if sampling_technique != 'ss-random':
-            length = nx.shortest_path_length(G, src, tar, weight='weight')
-            srcs.append(src)
-            tars.append(tar)
-            lengths.append(length)
-    # rotation = np.array([[np.cos(np.pi/9), -np.sin(np.pi/9)], [np.sin(np.pi/9), np.cos(np.pi/9)]])
-    # node_features = np.array(node_features)
-    # rotated_pts_x_y = (rotation @ node_features[:, :2].T).T
-    # node_features[:, :2] = rotated_pts_x_y
+    print("Number of source nodes:", len(src_nodes))
+    print("Generating shortest path distances.....")
+    for src in tqdm(src_nodes):
+        source, target, length = sampling_fn(G, samples_per_source, src=src)
+        srcs += source
+        tars += target
+        lengths += length
+    print("Number of lengths in dataset:", len(lengths))
     print("Saved dataset in:", filename)
     np.savez(filename, 
          edge_index = edges, 
          distances=distances, 
-         nodes=Nodes,
          srcs = srcs,
          tars = tars,
          lengths = lengths,
@@ -287,10 +233,12 @@ def main():
     parser.add_argument('--filename', type=str)
     parser.add_argument('--graph-resolution', type=int)
     parser.add_argument('--dataset-size', type=int)
+    parser.add_argument('--num-sources', type=int)
     parser.add_argument('--sampling-technique', type=str, default='random')
     parser.add_argument('--triangles', action='store_true')
     parser.add_argument('--edge-weight', action='store_true')
     parser.add_argument('--change-heights', action='store_true')
+    parser.add_argument('--critical-point-threshhold', type=float, default=0.2)
 
     args = parser.parse_args()
     dem_res = DATASET_INFO[args.name][0]
@@ -315,7 +263,6 @@ def main():
         yv_n = yv[::res, ::res]
         elevations_n = elevations[::res, ::res]
         print(np.min(elevations_n))
-        m = elevations_n.shape[1]
         print('terrain shape:', elevations_n.shape)
         print('resolution:', res)
         if args.change_heights:
@@ -324,28 +271,42 @@ def main():
                 uncertainty = np.random.uniform(-0.050, 0.050, size=elevations_n.shape)
                 elevations_n = uncertainty + elevations_n
                 
-                G, node_features = construct_nx_graph(xv_n, yv_n, elevations_n, triangles=args.triangles, scale=args.edge_weight)
+                G, node_features = construct_nx_graph(xv_n, 
+                                                      yv_n, 
+                                                      elevations_n, 
+                                                      triangles=args.triangles, 
+                                                      scale=args.edge_weight)
                 sz = args.dataset_size
                 sampling_technique = args.sampling_technique
                 
-                construct_pyg_dataset(G, 
-                                    node_features, 
-                                    filename, 
-                                    size=args.dataset_size, 
-                                    sampling_technique=sampling_technique,
-                                    m = 10)
+                construct_dataset(G = G, 
+                                  node_features = node_features, 
+                                  filename = filename, 
+                                  num_srcs = args.num_sources,
+                                  samples_per_source = args.dataset_size//args.num_sources,
+                                  sampling_method=sampling_technique,
+                                  rows = elevations_n.shape[0],
+                                  cols = elevations_n.shape[1], 
+                                  threshhold = args.critical_point_threshhold)
         else:
-            G, node_features = construct_nx_graph(xv_n, yv_n, elevations_n, triangles=args.triangles, scale=args.edge_weight)
+            G, node_features = construct_nx_graph(xv_n, 
+                                                  yv_n, 
+                                                  elevations_n, 
+                                                  triangles=args.triangles, 
+                                                  scale=args.edge_weight)
             filename = args.filename
             sz = args.dataset_size
             sampling_technique = args.sampling_technique
             
-            construct_pyg_dataset(G, 
-                                node_features, 
-                                filename, 
-                                size=args.dataset_size, 
-                                sampling_technique=sampling_technique,
-                                m = 10)
+            construct_dataset(G = G, 
+                                  node_features = node_features, 
+                                  filename = filename, 
+                                  num_srcs = args.num_sources,
+                                  samples_per_source = args.dataset_size//args.num_sources,
+                                  sampling_method=sampling_technique,
+                                  rows = elevations_n.shape[0],
+                                  cols = elevations_n.shape[1], 
+                                  threshhold = args.critical_point_threshhold)
 
 
 if __name__ == '__main__':
