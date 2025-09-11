@@ -20,6 +20,7 @@ import yaml
 import os
 import csv
 import logging
+import copy
 
 import time
 
@@ -124,7 +125,7 @@ def configure_embedding_module(model_config,
                                           activation=activation, 
                                           layer_norm=layer_norm, 
                                           dropout=dropout)
-    elif 'MLP' in layer_type:
+    elif 'MLP' in layer_type and new:
         embedding_module = NewMLP(**embedding_config, add_norm=layer_norm)
     else:
         embedding_module = GNNModel(layer_type=layer_type, 
@@ -135,12 +136,13 @@ def configure_embedding_module(model_config,
     return embedding_module
 
     
-def configure_mlp_module(mlp_config, aggr='sum', new=True):
-    print(mlp_config)
-    model_config = mlp_config['constr']
+def configure_mlp_module(mlp_config, 
+                        aggr='sum', 
+                        new=True):
+    model_config = copy.deepcopy(mlp_config['constr'])
     layer_norm=mlp_config['layer_norm']
     dropout=mlp_config['dropout']
-    print(mlp_config)
+    
     if aggr == 'combine':
         model_config['input'] = model_config['input'] * 3
     elif aggr == 'concat' or aggr == 'sum+diff':
@@ -165,7 +167,8 @@ def train_terrains_decoupled(train_dictionary,
                             p=1, 
                             aggr='sum',
                             edge_attr=None, 
-                            layer_norm=True, 
+                            layer_norm=True,
+                            new=True,
                             **kwargs):
     
     edge_dim=1
@@ -173,11 +176,12 @@ def train_terrains_decoupled(train_dictionary,
     embedding_module = configure_embedding_module(embedding_config, 
                                                  layer_type, 
                                                  edge_dim=edge_dim,
-                                                 new=False)
+                                                 new=new)
     print(embedding_module)
     prev_model_state_pth = os.path.join(prev_model_pth, 'final_model.pt')
     print("Loading from:", prev_model_state_pth)
     embedding_model_state = torch.load(prev_model_state_pth, map_location='cpu')
+    print(embedding_model_state.keys())
     embedding_module.load_state_dict(embedding_model_state)
     embedding_module.to(torch.double)
     
@@ -185,7 +189,7 @@ def train_terrains_decoupled(train_dictionary,
     print(embedding_module)
 
     
-    mlp = configure_mlp_module(model_config['mlp'], aggr=aggr)
+    mlp = configure_mlp_module(model_config['mlp'], aggr=aggr, new=new)
     mlp = mlp.to(torch.double)
     mlp.to(device)
 

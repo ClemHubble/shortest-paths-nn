@@ -112,7 +112,8 @@ def main():
                                     args.layer_type,
                                     args.p,
                                     args.trial)
-            
+            if args.new:
+                log_dir = os.path.join(log_dir, 'new')
             config=model_configs[modelname]
             print(modelname, config)
 

@@ -46,7 +46,6 @@ def generate_train_data(train_file_name):
     test_info = {'graph': graph_data, 
                  'nx_graph': G,
                  'node_features': np.copy(node_features),
-                 'cnn_img': cnn_img, 
                  'train_srcs': train_srcs.numpy(), 
                  'train_tars': train_tars.numpy(), 
                  'train_lengths': train_lengths.numpy()}

@@ -45,6 +45,30 @@ We include our updated results below (note that new GAT results use layers which
 
 ### All results for real terrains
 
+Table 1. Comparing relative and absolute error with the new MLP and GAT implementations (both with layer normalization and SiLU activation) for Norway (4 million nodes) where the terrain graph is weighted by Euclidean distance between initial node embeddings. Note that we also report accuracy as the percentage of test SPD predictions with relative error below 2% and 1%. 
+| **Method**      | **Relative error (%)** | **Absolute error (m)** | **Accuracy (t =0.02, %)** |**Accuracy (t =0.01, %)** |
+|:----------------|:-----------------:|----------------:|:----------:|:----------:|
+| Full MLP+$L_1$  | 0.73 $\pm$ 0.71   | 71.4 $\pm$ 56.7 |   91.9    |   76.3    |
+| Coarse MLP+$L_1$| 0.72 $\pm$ 0.83   | 69.4 $\pm$ 66.1 |   93.3    |   76.8   |
+| Coarse GAT+$L_1$| 0.62 $\pm$ 0.86   | 65.8 $\pm$ 55.5 |   96.7    |   84.8     |
+| MCTR GAT        | 0.59 $\pm$ 0.81   | 41.2 $\pm$ 35.0 |   96.7    |   89.1   |
+
+
 #### Weighted terrains
+Table 2. Comparing relative and absolute error with the new MLP and GAT implementations (both with layer normalization and SiLU activation) for Norway (4 million nodes) where the terrain graph is weighted by 1+angle of elevation. Note that we also report accuracy as the percentage of test SPD predictions with relative error below 2% and 1%. 
+| **Method**      | **Relative error (%)** | **Absolute error (m)** | **Accuracy (t =0.02, %)** |**Accuracy (t =0.01, %)** |
+|:----------------|:-----------------:|----------------:|:----------:|:----------:|
+| Full MLP+$L_1$  | 2.39 $\pm$ 2.09   | 204 $\pm$ 143 |   51.4    |   25.4   |
+| Coarse MLP+$L_1$| 2.48 $\pm$ 2.20   | 210 $\pm$ 140 |   48.4    |   23.9   |
+| Coarse GAT+$L_1$| 2.26 $\pm$ 2.30   | 184 $\pm$ 126 |   59.3    |   29.7   |
+| MCTR GAT        | 1.89 $\pm$ 4.95   | 140 $\pm$ 98  |   71.0   |   41.1   |
+
+Table 3. Comparing relative and absolute error with the new MLP and GAT implementations for LA (16 million nodes) where the terrain graph is weighted by 1+angle of elevation. 
+| **Method**      | **Relative error (%)** | **Absolute error (m)** | **Accuracy (t =0.02, %)** |**Accuracy (t =0.01, %)** |
+|:----------------|:-----------------:|----------------:|:----------:|:----------:|
+| Full MLP+$L_1$  |    |  |      |      |
+| Coarse MLP+$L_1$|    |  |      |      |
+| Coarse GAT+$L_1$|    |  |      |      |
+| MCTR GAT        |    |  |      |      |
 
 ### Terrain uncertainty modeling

@@ -59,7 +59,14 @@ class NewMLP(nn.Module):
 
  
 # Baseline 0
-def initialize_mlp(input, hidden, output, layers, dropout=True, layer_norm=True, activation='relu', **kwargs):
+def initialize_mlp(input, 
+                   hidden, 
+                   output, 
+                   layers, 
+                   dropout=True, 
+                   layer_norm=True, 
+                   activation='relu', 
+                   **kwargs):
     if layers == 1:
         hidden=output
     if activation == 'relu' or activation == 'ReLU':

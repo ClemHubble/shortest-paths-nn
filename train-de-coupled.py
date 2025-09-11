@@ -34,17 +34,22 @@ def prepare_single_terrain_dataset(train_data, batch_size):
     print(graph_data)
     return graph_data, train_dataloader
 
-def get_artificial_datasets(res=2):
+def get_artificial_datasets(layer_type, trial, res=1, new=True):
     dataset_names = []
     train_data_pths = []
+    finetuning_files = []
     amps = [1.0, 2.0, 4.0, 6.0, 8.0,9.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0]
     for a in amps:
         pth = f'/data/sam/terrain/data/artificial/change-heights/amp-{a}-res-{res}-train-50k.npz'
-        name =  f'/data/sam/terrain/data/artificial/change-heights/amp-{a}-res-{res}-train-50k'
-        dataset_names.append(name)
+        name =  f'/data/sam/terrain/models/single_dataset/artificial/change-heights/amp-{a}-res-{res}-train-50k/{layer_type}/no-vn/siamese/p-1/mse_loss/<modelname>/{trial}'
+        if new and layer_type =='MLP':
+            name = os.path.join(name, 'new')
+        dataset_name = f'amp-{a}-res-{res}-train-50k'
+        dataset_names.append(dataset_name)
         train_data_pths.append(pth)
+        finetuning_files.append(name)
 
-    return dataset_names, train_data_pths
+    return dataset_names, train_data_pths, finetuning_files
 
 def main():
     parser = argparse.ArgumentParser()
@@ -83,17 +88,22 @@ def main():
     # Train all artificial datasets sequentially together. This tends to be fast so it is 
     # easy to throw into a for-loop for training.  
     if args.artificial:
-        dataset_names, train_data_pths = get_artificial_datasets(res=1)
+        dataset_names, train_data_pths, finetuning_from = get_artificial_datasets(layer_type = args.layer_type, 
+                                                                                  trial=args.trial, 
+                                                                                  new=args.new,
+                                                                                  res=1)
+        print(train_data_pths)
         num_datasets = len(dataset_names)
     else:
         dataset_names = [args.dataset_name]
         train_data_pths = [os.path.join(output_dir, 'data', f'{args.train_data}.npz')]
+        finetuning_from = args.finetune_from
         num_datasets = 1
 
     for i in range(len(dataset_names)):
         dataset_name = dataset_names[i]
         train_data_pth = train_data_pths[i]
-        prev_model_file_pth = args.finetune_from[i]
+        prev_model_file_pth = finetuning_from[i]
         for modelname in model_configs:
 
             # Provide train set dataloaders 
@@ -122,7 +132,8 @@ def main():
                                     loss_func=args.loss,
                                     lr =args.lr,
                                     p=args.p, 
-                                    aggr=aggr)
+                                    aggr=aggr, 
+                                    new=args.new)
     
 if __name__=='__main__':
     main()

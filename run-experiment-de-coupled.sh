@@ -33,8 +33,10 @@ echo "layer type: $layer_type"
 echo "Aggr: $aggr"
 echo "p= $p"
 echo "loss = $loss"
+echo "finetune-from = $finetune_from"
 
-python train-de-coupled.py --train-data $train_data \
+python train-de-coupled.py --finetune-from $finetune_from \
+--train-data $train_data \
 --epochs $epochs \
 --device $device \
 --batch-size $batch_size \
@@ -46,7 +48,6 @@ python train-de-coupled.py --train-data $train_data \
 --aggr $aggr \
 --p $p \
 --loss $loss \
---finetune-from $finetune_from \
 --include-edge-attr $include_edge_attr \
 --lr $lr \
 --trial $TRIAL \
