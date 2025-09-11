@@ -1,3 +1,12 @@
+"""
+Dataset Generation Script
+
+This script processes vertex and edge files into npz datasets
+for training and testing graph models.
+
+Acknowledgment:
+Special thanks to Caris for her contributions and support in developing this script.
+"""
 import numpy as np
 import networkx as nx
 from sklearn.model_selection import train_test_split
@@ -38,9 +47,9 @@ def generate_dataset(vertex_file, edge_file, output_prefix):
     tars = []
     lengths = []
     node_indices = list(G.nodes)
-    np.random.seed(42)
 
-    N = int(50000 / 0.8)
+    TRAIN_SIZE = 50000
+    N = int(TRAIN_SIZE / 0.8)
     for _ in range(N):
         src, tar = np.random.choice(node_indices, size=2, replace=False)
         try:
