@@ -173,7 +173,7 @@ def test_model_error(embeddings, srcs, tars, lengths, mlp_model=None, p=1, vn_em
     return total_relative_error, mean_absolute_error, squared_error, preds
 
 
-def generate_test_dataset(G, s=100, keep_path=False):
+def generate_test_dataset(G, s=100, keep_path=False, cutoff=50):
     num_nodes = len(G.nodes)
     lengths = []
     srcs = []
@@ -194,7 +194,7 @@ def generate_test_dataset(G, s=100, keep_path=False):
                 tars.append(tar)
                 paths.append(all_pairs_shortest_paths[tar])
         else:
-            all_pairs_shortest_paths = nx.single_source_dijkstra_path_length(G, src, weight='weight')
+            all_pairs_shortest_paths = nx.single_source_dijkstra_path_length(G, src,  cutoff=cutoff, weight='weight')
             for tar in all_pairs_shortest_paths:
                 if all_pairs_shortest_paths[tar] == 0:
                     continue

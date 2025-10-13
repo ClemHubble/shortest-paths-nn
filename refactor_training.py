@@ -61,8 +61,8 @@ def npz_to_dataset(data):
     
     edge_index = torch.tensor(data['edge_index'], dtype=torch.long)
 
-    srcs = torch.tensor(data['srcs'])
-    tars = torch.tensor(data['tars'])
+    srcs = torch.tensor(data['srcs'], dtype=torch.int)
+    tars = torch.tensor(data['tars'],  dtype=torch.int)
     lengths = torch.tensor(data['lengths'])
     node_features = torch.tensor(data['node_features'], dtype=torch.double)
     l2 = torch.norm(node_features[srcs] - node_features[tars], dim=1, p=2)

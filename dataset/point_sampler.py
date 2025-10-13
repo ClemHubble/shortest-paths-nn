@@ -1,4 +1,4 @@
-# From Haoyun Wang: I took this chunk of code from Haoyun Wang's final project 
+# I took this chunk of code from Haoyun Wang's final project 
 # from the Topological Data Analysis course from UCSD.
 
 import numpy as np
@@ -13,7 +13,7 @@ def random_sampling(graph: nx.Graph, samples_per_source, src=None):
     distance = nx.single_source_dijkstra_path_length(graph, src)
     # random
     target = np.random.choice(graph.number_of_nodes(), (samples_per_source, ), replace=False)
-    distance = [distance[t] for t in target]
+    distance = [distance[t.item()] for t in target]
     return [src] * samples_per_source, target.tolist(), distance
 
 
@@ -41,7 +41,7 @@ def find_critical_points(terrain, threshold):
     long_pers_lower_dgm = lower_dgm[lower_dgm[:, 1]- lower_dgm[:, 0] > threshold]
     long_pers_upper_dgm = upper_dgm[upper_dgm[:, 0]- upper_dgm[:, 1] > threshold]
     long_pers_dgm = np.concatenate([long_pers_lower_dgm, long_pers_upper_dgm])
-    print(f"{long_pers_dgm.shape[0]} significant critical point pairs")
+    print(f"{long_pers_dgm.shape[0]} significant critical point pairs at threshhold {threshold}")
 
     flatten_terrain = terrain.flatten(0, 1)
     critical_idx_0 = [np.argmin(abs(flatten_terrain[:, 2] - long_pers_lower_dgm[i, 0])) for i in range(long_pers_lower_dgm.shape[0])]
@@ -56,4 +56,13 @@ def find_critical_points(terrain, threshold):
     critical_idx = [src.item() for src in critical_idx]
     return critical_idx
 
-        
+def mesh_lower_star_filtration(mesh, threshhold):
+    raise NotImplementedError("There should be a different critical point sampler for TINs")
+
+def reshape_node_features_grid(node_features, rows, cols):
+    c1 = node_features[:, 0].reshape(rows, cols)
+    c2 = node_features[:, 1].reshape(rows, cols)
+    c3 = node_features[:, 2].reshape(rows, cols)
+    terrain = torch.tensor(np.stack([c1, c2, c3]), dtype=torch.float)
+    terrain = np.transpose(terrain, (1, 2, 0))
+    return terrain

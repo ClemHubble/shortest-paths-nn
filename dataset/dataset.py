@@ -176,6 +176,8 @@ def generate_probabilities(N, m):
         probabilities.append(1/(hops**2) if hops > 0 else 1)
     return all_pairs, probabilities
 
+def convert_to_node_idx(pairs, rows, cols):
+    return pairs[:, 1] * rows + pairs[:, 0]
 
 def construct_dataset(G,
                       node_features, 
@@ -185,37 +187,172 @@ def construct_dataset(G,
                       samples_per_source, 
                       rows=100, 
                       cols=100, 
-                      threshhold=0.2):
+                      threshhold=0.2, 
+                      mixture=0.2):
     edges, distances = to_pyg_graph(G)
     
     if sampling_method == 'single-source-random':
+        """
+        Sample random source nodes
+
+        For shortest paths, sample random target nodes from across the terrain
+        """
         src_nodes = np.random.choice(len(node_features), size=num_srcs)
-        sampling_fn = random_sampling
+        src_sampling_fn_pairs = [(src_nodes, random_sampling)]
     elif sampling_method == 'critical-point-source':
+        """
+        Use only critical points as source nodes
+
+        For shortest paths, sample random target nodes from across the terrain
+        """
         node_features = np.array(node_features)
-        c1 = node_features[:, 0].reshape(rows, cols)
-        c2 = node_features[:, 1].reshape(rows, cols)
-        c3 = node_features[:, 2].reshape(rows, cols)
-        terrain = torch.tensor(np.stack([c1, c2, c3]), dtype=torch.float)
-        terrain = np.transpose(terrain, (1, 2, 0))
-        print(terrain.size())
+        terrain = reshape_node_features_grid(node_features, row, cols)
         src_nodes = find_critical_points(terrain, threshhold)
-        sampling_fn = random_sampling
+        src_sampling_fn_pairs = [(src_nodes, random_sampling)]
+
     elif sampling_method == 'distance-based':
+        """
+        Sample random source nodes
+
+        Sample more target points from around the source node
+        """
         src_nodes = np.random.choice(len(node_features), size=num_srcs)
-        sampling_fn = distance_based
+        src_sampling_fn_pairs = [(src_nodes, distance_based)]
+
+    elif sampling_method == 'mixed-distance-based-critical-point':
+        """
+        Use a mixture of critical and random nodes as source nodes. 
+        
+        To sample shortest paths, we use distance based sampling function for target nodes.
+        """
+        node_features = np.array(node_features)
+        terrain = reshape_node_features_grid(node_features, rows, cols)
+        critical_points = find_critical_points(terrain, threshhold)
+        num_cp = int(num_srcs*mixture)
+        if num_cp > len(critical_points):
+            num_random = num_srcs - len(critical_points)
+            cp_srcs = critical_points.astype(int)
+        else:
+            cp_srcs = np.random.choice(critical_points, size=num_cp, replace=False).astype(int)
+            num_random = num_srcs - num_cp
+        random_srcs =  np.random.choice(len(node_features), size=num_random, replace=False).astype(int)
+        print(len(random_srcs), len(cp_srcs))
+        src_nodes = np.hstack((random_srcs, cp_srcs))
+        src_sampling_fn_pairs = [(src_nodes, distance_based)]
+    elif sampling_method == 'mixed-random-sampling-critical-point':
+        """
+        Use a mixture of critical and random nodes as source nodes.
+
+        To sample shortest paths, we use random sampling function for target nodes
+        """
+        
+        node_features = np.array(node_features)
+        terrain = reshape_node_features_grid(node_features, rows, cols)
+        critical_points = find_critical_points(terrain, threshhold)
+
+        num_cp = int(num_srcs*mixture)
+        if num_cp > len(critical_points):
+            num_random = num_srcs - len(critical_points)
+            cp_srcs = critical_points
+        else:
+            cp_srcs = np.random.choice(critical_points, size=num_cp, replace=False)
+            num_random = num_srcs - num_cp
+        random_srcs =  np.random.choice(len(node_features), size=num_random, replace=False)
+        src_nodes = np.hstack((random_srcs, cp_srcs))
+        src_sampling_fn_pairs = [(src_nodes, random_sampling)]
+
+    elif sampling_method == 'mixed-db-critical-points-rs-random-points':
+        """
+        Use a mixture of critical and random nodes as source nodes
+
+        Use distance based sampling for targets for critical points
+
+        Use random sampling for targets for random points
+
+        We construct the dataset here too and then exit. This is because we 
+        want to use two different sampling functions. I should probably change
+        this so we can do this in general. 
+        """
+        node_features = np.array(node_features)
+        terrain = reshape_node_features_grid(node_features, rows, cols)
+        critical_points = find_critical_points(terrain, threshhold)
+        num_cp = int(num_srcs*mixture)
+        
+        if num_cp > len(critical_points):
+            num_random = num_srcs - len(critical_points)
+            print(num_random)
+            cp_srcs = critical_points
+        else:
+            cp_srcs = np.random.choice(critical_points, size=num_cp, replace=False)
+            num_random = num_srcs - num_cp
+        random_points = np.random.choice(len(node_features), size=num_random, replace=False)
+        print(len(np.unique(cp_srcs)), len(np.unique(random_sampling)))
+        src_sampling_fn_pairs = [(cp_srcs, distance_based), (random_points, random_sampling)]
+
+    elif sampling_method == 'mountain-ridges':
+        """
+        Sample source points only from mountain ridges
+
+        Mountain ridges are found from discrete Morse reconstruction algorithm and generated using
+        https://github.com/wangjiayuan007/graph_recon_DM (Jiayuan Wang). Download and follow the 
+        directions in that repository to generate your own set of Morse points. 
+        """
+        
+        morse_pts = np.load(f'/data/sam/terrain/data/norway/{rows}-morse-points-t-{threshhold}.npy')
+        morse_pts_idxs = convert_to_node_idx(morse_pts, rows=rows, cols=cols).astype(int)
+        num_mp = int(num_srcs*mixture)
+        num_random = num_srcs - num_mp
+        print("Number of morse points", len(morse_pts_idxs))
+        morse_pt_srcs = np.random.choice(morse_pts_idxs, size=num_mp, replace=False)
+        random_srcs = np.random.choice(len(node_features), size=num_random, replace=False)
+        print(len(morse_pt_srcs), len(random_srcs))
+
+        src_nodes = np.hstack((morse_pt_srcs, 
+                               random_srcs))
+        print("Number of unique sources:", len(np.unique(src_nodes)))
+        src_sampling_fn_pairs = [(src_nodes, random_sampling)]
+    elif sampling_method == 'distance-based-mountain-ridges':
+        """
+        Sample source points only from mountain ridges
+
+        Mountain ridges are found from discrete Morse reconstruction algorithm and generated using
+        https://github.com/wangjiayuan007/graph_recon_DM (Jiayuan Wang). Download and follow the 
+        directions in that repository to generate your own set of Morse points. 
+        """
+        
+        morse_pts = np.load(f'/data/sam/terrain/data/norway/{rows}-morse-points-t-{threshhold}.npy')
+        morse_pts_idxs = convert_to_node_idx(morse_pts, rows=rows, cols=cols).astype(int)
+        num_mp = int(num_srcs*mixture)
+        num_random = num_srcs - num_mp
+        print("Number of morse points", len(morse_pts_idxs))
+        morse_pt_srcs = np.random.choice(morse_pts_idxs, size=num_mp, replace=False)
+        random_srcs = np.random.choice(len(node_features), size=num_random, replace=False)
+        print(len(morse_pt_srcs), len(random_srcs))
+
+        src_nodes = np.hstack((morse_pt_srcs, 
+                               random_srcs))
+        print("Number of unique sources:", len(np.unique(src_nodes)))
+        src_sampling_fn_pairs = [(src_nodes, distance_based)]
     else:
-        raise NotImplementedError("please choose between 'single-source-random', 'critical-point-source', 'distance-based'")
+        raise NotImplementedError("please choose between 'single-source-random', \
+                                                         'critical-point-source', \
+                                                         'distance-based', \
+                                                         'mountain-ridges', \
+                                                         'mixed-distance-based-critical-point', \
+                                                         'mixed-random-sampling-critical-point'" )
     srcs = []
     tars = []
     lengths = []
-    print("Number of source nodes:", len(src_nodes))
+    print("Number of source nodes:", num_srcs)
     print("Generating shortest path distances.....")
-    for src in tqdm(src_nodes):
-        source, target, length = sampling_fn(G, samples_per_source, src=src)
-        srcs += source
-        tars += target
-        lengths += length
+    for pair in src_sampling_fn_pairs:
+        src_nodes = pair[0]
+        sampling_fn = pair[1]
+        for src in tqdm(src_nodes):
+            source, target, length = sampling_fn(G, samples_per_source, src=src)
+            srcs += source
+            tars += target
+            lengths += length
     print("Number of lengths in dataset:", len(lengths))
     print("Saved dataset in:", filename)
     np.savez(filename, 
@@ -239,6 +376,7 @@ def main():
     parser.add_argument('--edge-weight', action='store_true')
     parser.add_argument('--change-heights', action='store_true')
     parser.add_argument('--critical-point-threshhold', type=float, default=0.2)
+    parser.add_argument('--mixture-param', type=float, default=0.2)
 
     args = parser.parse_args()
     dem_res = DATASET_INFO[args.name][0]
@@ -306,7 +444,8 @@ def main():
                                   sampling_method=sampling_technique,
                                   rows = elevations_n.shape[0],
                                   cols = elevations_n.shape[1], 
-                                  threshhold = args.critical_point_threshhold)
+                                  threshhold = args.critical_point_threshhold, 
+                                  mixture=args.mixture_param)
 
 
 if __name__ == '__main__':
